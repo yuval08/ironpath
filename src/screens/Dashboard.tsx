@@ -44,7 +44,9 @@ export default function Dashboard() {
 
   if (!plan || !settings) return null;
 
-  const day = currentDay(plan);
+  // Once the block is finished there is no "today" — the cursor stays pinned to
+  // W4 Friday, which would otherwise offer that day forever and count past 20.
+  const day = plan.completedAt ? undefined : currentDay(plan);
   const week = plan.weeks.find((w) => w.weekNumber === plan.currentWeek);
   const done = completedSessions(sessions);
   const pause = activePause(plan);

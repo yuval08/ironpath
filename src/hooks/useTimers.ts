@@ -50,6 +50,7 @@ export function useRestTimer(options: { vibrate?: boolean; sound?: boolean } = {
   const [total, setTotal] = useState(60);
   const [remaining, setRemaining] = useState<number | null>(null);
   const notified = useRef(false);
+  const dismissTimeout = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (endsAt == null) {
@@ -66,12 +67,18 @@ export function useRestTimer(options: { vibrate?: boolean; sound?: boolean } = {
           navigator.vibrate([180, 90, 180]);
         }
         if (sound) playBeep();
-        window.setTimeout(() => setEndsAt(null), 900);
+        // Held in a ref and cleared below: starting a new rest inside this
+        // 900ms window would otherwise be cancelled by the previous one's
+        // orphaned dismissal — exactly when the buzz says "go again".
+        dismissTimeout.current = window.setTimeout(() => setEndsAt(null), 900);
       }
     };
     tick();
     const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(dismissTimeout.current);
+    };
   }, [endsAt, vibrate, sound]);
 
   const start = useCallback((seconds: number) => {

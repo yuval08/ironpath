@@ -192,6 +192,68 @@ describe('personal records', () => {
   });
 });
 
+/**
+ * Regression tests for defects found in review. Each one silently corrupted the
+ * plan cursor or duplicated state, so they are locked down explicitly.
+ */
+describe('concurrency and out-of-order guards', () => {
+  beforeEach(reset);
+
+  it('never creates a second plan when ensureSeeded races with itself', async () => {
+    // React 18 StrictMode double-invokes the seeding effect; two tabs do the same.
+    const [a, b] = await Promise.all([ensureSeeded(), ensureSeeded()]);
+    expect(await db.plans.count()).toBe(1);
+    expect(await db.settings.count()).toBe(1);
+    expect(a.plan.id).toBe(b.plan.id);
+  });
+
+  it('does not advance the cursor twice when the same session is completed twice', async () => {
+    const { plan, settings } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, settings.weightOverrides);
+
+    await completeSession(session);
+    await completeSession(session); // double-tap on Finish
+
+    const updated = (await getPlan())!;
+    expect(updated.currentWeek).toBe(1);
+    expect(updated.currentDayIndex).toBe(1);
+  });
+
+  it('leaves the cursor alone when an out-of-order day is completed', async () => {
+    const { plan, settings } = await ensureSeeded();
+    // Cursor is on Week 1 Day 0; the user starts Week 2 Day 3 from the Plan screen.
+    const otherDay = plan.weeks[1]!.days[3]!;
+    const session = await createSession(plan, otherDay, settings.weightOverrides);
+    await completeSession(session);
+
+    const updated = (await getPlan())!;
+    expect(updated.currentWeek).toBe(1);
+    expect(updated.currentDayIndex).toBe(0);
+    expect((await db.sessions.get(session.id))?.status).toBe('completed');
+  });
+
+  it('restartBlock clears sessions even if they carry a stale plan id', async () => {
+    const { plan, settings } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, settings.weightOverrides);
+    await db.sessions.put({ ...session, planId: 'plan_from_an_old_install' });
+
+    await applyResumeChoice('restartBlock');
+    expect(await db.sessions.count()).toBe(0);
+  });
+
+  it('restartWeek deletes only the current week, across plan ids', async () => {
+    const { plan, settings } = await ensureSeeded();
+    const week1 = await createSession(plan, plan.weeks[0]!.days[0]!, settings.weightOverrides);
+    const week2 = await createSession(plan, plan.weeks[1]!.days[0]!, settings.weightOverrides);
+    await db.sessions.put({ ...week1, planId: 'stale' });
+
+    await applyResumeChoice('restartWeek');
+
+    expect(await db.sessions.get(week1.id)).toBeUndefined();
+    expect(await db.sessions.get(week2.id)).toBeDefined();
+  });
+});
+
 describe('session results shape', () => {
   it('the factory result matches what createSession produces', async () => {
     await reset();

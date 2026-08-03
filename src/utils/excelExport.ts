@@ -87,6 +87,12 @@ function setsSummary(
     .join(' · ');
 }
 
+/** Formats a date defensively — returns an em dash rather than throwing. */
+function safeDate(value: string | number): string {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '—' : format(d, 'yyyy-MM-dd');
+}
+
 function firstAndLast(values: number[]): { first: number | null; last: number | null } {
   if (values.length === 0) return { first: null, last: null };
   return { first: values[0] ?? null, last: values[values.length - 1] ?? null };
@@ -129,9 +135,9 @@ function summarySheet(wb: ExcelJS.Workbook, input: ExportInput): void {
     return firstAndLast(values);
   })();
 
-  const endDate = plan.completedAt
-    ? format(new Date(plan.completedAt), 'yyyy-MM-dd')
-    : format(new Date(new Date(plan.startDate).getTime() + 27 * 86400000), 'yyyy-MM-dd');
+  // A restored backup can carry any string here (startDate is only z.string()),
+  // and an invalid Date would throw RangeError out of the user's only export path.
+  const endDate = safeDate(plan.completedAt ?? new Date(plan.startDate).getTime() + 27 * 86400000);
 
   const rows: [string, string | number | null][] = [
     ['User name', settings.userName || '—'],
@@ -164,7 +170,7 @@ function summarySheet(wb: ExcelJS.Workbook, input: ExportInput): void {
   notesHeader.fill = SECTION_FILL;
   for (const session of done.filter((s) => s.sessionNotes.trim())) {
     sheet.addRow({
-      metric: `${session.date} — ${DAY_LABELS[session.dayType]}`,
+      metric: `${session.date} — ${DAY_LABELS[session.dayType] ?? session.dayType}`,
       value: session.sessionNotes,
     });
   }
@@ -223,8 +229,14 @@ function weekSheets(wb: ExcelJS.Workbook, input: ExportInput): void {
     { header: 'Video', key: 'video', width: 30 },
   ];
 
+  const usedNames = new Set<string>();
   for (const week of plan.weeks) {
-    const sheet = wb.addWorksheet(`Week ${week.weekNumber}`);
+    // A restored plan can carry duplicate week numbers; ExcelJS throws on a
+    // repeated worksheet name, which would kill the whole export.
+    let name = `Week ${week.weekNumber}`;
+    for (let n = 2; usedNames.has(name); n += 1) name = `Week ${week.weekNumber} (${n})`;
+    usedNames.add(name);
+    const sheet = wb.addWorksheet(name);
     addColumns(sheet, specs);
     styleHeader(sheet, specs.length);
 
@@ -233,52 +245,107 @@ function weekSheets(wb: ExcelJS.Workbook, input: ExportInput): void {
       .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
     for (const day of week.days) {
-      const session = weekSessions.find((s) => s.dayId === day.id);
-      const sectionRow = sheet.addRow({
-        date: session?.date ?? '',
-        day: `${WEEKDAY_LABELS[day.weekday]} — ${day.title}`,
-      });
-      sectionRow.font = { bold: true };
-      sectionRow.fill = SECTION_FILL;
+      // A day can legitimately be trained more than once (the Plan screen allows a
+      // redo). Every session gets its own section — taking only the first would
+      // drop the repeat from the sheet while the Summary still counted it.
+      const daySessions = weekSessions.filter((s) => s.dayId === day.id);
+      const passes = daySessions.length > 0 ? daySessions : [undefined];
 
-      for (const p of day.prescriptions) {
-        const result = session?.results.find((r) => r.prescriptionId === p.id);
-        const rpes = result?.sets.map((s) => s.rpe).filter((v): v is number => v != null) ?? [];
-        const rirs = result?.sets.map((s) => s.rir).filter((v): v is number => v != null) ?? [];
-        const durations =
-          result?.sets.map((s) => s.durationSeconds).filter((v): v is number => v != null) ?? [];
-        const weights =
-          result?.sets.map((s) => s.weight).filter((v): v is number => v != null) ?? [];
-        const video = getVideo(p.exerciseId, input.settings.videoOverrides);
-        const displayId = result?.substitutionExerciseId ?? p.exerciseId;
-
-        const row = sheet.addRow({
+      passes.forEach((session, passIndex) => {
+        const passLabel =
+          daySessions.length > 1 ? ` (attempt ${passIndex + 1} of ${daySessions.length})` : '';
+        const sectionRow = sheet.addRow({
           date: session?.date ?? '',
-          day: day.title,
-          block: p.blockLabel,
-          exercise:
-            exerciseName(displayId) +
-            (result?.substitutionExerciseId ? ` (sub for ${exerciseName(p.exerciseId)})` : ''),
-          plannedSets: p.sets,
-          plannedReps: result?.plannedReps ?? '',
-          recWeight: p.recommendedWeight ?? result?.recommendedWeight ?? null,
-          actualWeight: weights.length ? Math.max(...weights) : null,
-          actualReps: result ? setsSummary(result.sets) : '',
-          band: result?.sets.find((s) => s.band)?.band ?? p.recommendedBand ?? '',
-          duration: durations.length ? Math.max(...durations) : null,
-          rpe: rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : null,
-          rir: rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null,
-          pain: result?.painDuring ?? null,
-          completed: result?.completed ? 'Yes' : result?.skippedReason ? 'Skipped' : 'No',
-          notes: result?.notes ?? '',
-          video: video?.title ?? '',
+          day: `${WEEKDAY_LABELS[day.weekday]} — ${day.title}${passLabel}`,
         });
-        if (video) {
-          const cell = row.getCell('video');
-          cell.value = { text: video.title, hyperlink: video.url };
-          cell.font = { color: { argb: 'FF0F766E' }, underline: true };
+        sectionRow.font = { bold: true };
+        sectionRow.fill = SECTION_FILL;
+
+        const emitted = new Set<string>();
+
+        const writeRow = (opts: {
+          block: string;
+          exercise: string;
+          plannedSets: number | null;
+          recWeight: number | null;
+          videoId: string;
+          result: WorkoutSession['results'][number] | undefined;
+          band: string;
+        }) => {
+          const { result } = opts;
+          const rpes = result?.sets.map((s) => s.rpe).filter((v): v is number => v != null) ?? [];
+          const rirs = result?.sets.map((s) => s.rir).filter((v): v is number => v != null) ?? [];
+          const durations =
+            result?.sets.map((s) => s.durationSeconds).filter((v): v is number => v != null) ?? [];
+          const weights =
+            result?.sets.map((s) => s.weight).filter((v): v is number => v != null) ?? [];
+          const video = getVideo(opts.videoId, input.settings.videoOverrides);
+
+          const row = sheet.addRow({
+            date: session?.date ?? '',
+            day: day.title,
+            block: opts.block,
+            exercise: opts.exercise,
+            plannedSets: opts.plannedSets,
+            plannedReps: result?.plannedReps ?? '',
+            recWeight: opts.recWeight,
+            actualWeight: weights.length ? Math.max(...weights) : null,
+            actualReps: result ? setsSummary(result.sets) : '',
+            band: opts.band,
+            duration: durations.length ? Math.max(...durations) : null,
+            rpe: rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : null,
+            rir: rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null,
+            pain: result?.painDuring ?? null,
+            completed: result?.completed ? 'Yes' : result?.skippedReason ? 'Skipped' : 'No',
+            notes: result?.notes ?? '',
+            video: video?.title ?? '',
+          });
+          if (video) {
+            const cell = row.getCell('video');
+            cell.value = { text: video.title, hyperlink: video.url };
+            cell.font = { color: { argb: 'FF0F766E' }, underline: true };
+          }
+        };
+
+        for (const p of day.prescriptions) {
+          const result = session?.results.find((r) => r.prescriptionId === p.id);
+          if (result) emitted.add(result.prescriptionId);
+          // Label by what was actually performed. The plan can be edited after the
+          // fact, and p.exerciseId would then relabel real sets as an exercise that
+          // was never done.
+          const performedId = result?.substitutionExerciseId ?? result?.exerciseId ?? p.exerciseId;
+          const substituted =
+            result?.substitutionExerciseId != null &&
+            result.substitutionExerciseId !== result.exerciseId;
+          writeRow({
+            block: p.blockLabel,
+            exercise:
+              exerciseName(performedId) +
+              (substituted ? ` (sub for ${exerciseName(result.exerciseId)})` : ''),
+            plannedSets: p.sets,
+            recWeight: p.recommendedWeight ?? result?.recommendedWeight ?? null,
+            videoId: performedId,
+            result,
+            band: result?.sets.find((s) => s.band)?.band ?? p.recommendedBand ?? '',
+          });
         }
-      }
+
+        // Anything logged that no longer joins to a prescription (restored backup,
+        // renamed ids) still belongs in the export rather than silently vanishing.
+        for (const result of session?.results ?? []) {
+          if (emitted.has(result.prescriptionId)) continue;
+          const performedId = result.substitutionExerciseId ?? result.exerciseId;
+          writeRow({
+            block: 'Unmatched (not in current plan)',
+            exercise: exerciseName(performedId),
+            plannedSets: result.plannedSets ?? null,
+            recWeight: result.recommendedWeight ?? null,
+            videoId: performedId,
+            result,
+            band: result.sets.find((s) => s.band)?.band ?? '',
+          });
+        }
+      });
     }
   }
 }
@@ -348,7 +415,7 @@ function painSheet(wb: ExcelJS.Workbook, input: ExportInput): void {
       if (!entry) continue;
       sheet.addRow({
         date: session.date,
-        day: DAY_LABELS[session.dayType],
+        day: DAY_LABELS[session.dayType] ?? session.dayType,
         when,
         lk: entry.leftKnee,
         rk: entry.rightKnee,
@@ -396,7 +463,7 @@ function recordsSheet(wb: ExcelJS.Workbook, input: ExportInput): void {
     const spacer = sheet.addRow({ record: 'Logged records' });
     spacer.font = { bold: true };
     spacer.fill = SECTION_FILL;
-    for (const r of input.records.sort((a, b) => a.date.localeCompare(b.date))) {
+    for (const r of [...input.records].sort((a, b) => a.date.localeCompare(b.date))) {
       sheet.addRow({ record: r.kind, value: r.value, unit: r.unit, date: r.date, notes: r.notes });
     }
   }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildWeeks, DAY_TEMPLATES, PUSH_UP_EXERCISE_IDS, WARM_UP } from './program';
+import {
+  buildWeeks,
+  DAY_TEMPLATES,
+  estimateSessionMinutes,
+  PUSH_UP_EXERCISE_IDS,
+  WARM_UP,
+} from './program';
 import { EXERCISE_BY_ID } from './exercises';
 import { plannedRepsLabel } from '@/db/repository';
 
@@ -49,16 +55,6 @@ describe('four-week program generation', () => {
     expect(weeks.map((w) => w.pushUpGoalHigh)).toEqual([60, 70, 80, 80]);
   });
 
-  it('adds pull-up practice volume as the weeks progress', () => {
-    const sets = weeks.map(
-      (w) =>
-        w.days
-          .find((d) => d.dayType === 'upperA')!
-          .prescriptions.find((p) => p.exerciseId === 'strict-pull-up')!.sets,
-    );
-    expect(sets).toEqual([3, 4, 4, 5]);
-  });
-
   it('never programs a conventional deadlift or a reverse lunge', () => {
     const ids = new Set(
       weeks.flatMap((w) => w.days.flatMap((d) => d.prescriptions.map((p) => p.exerciseId))),
@@ -83,14 +79,89 @@ describe('four-week program generation', () => {
     expect(supersetA[1]!.restSeconds).toBeGreaterThan(0);
   });
 
-  it('keeps each session inside the ~60 minute target', () => {
+  it('keeps every session inside the ~60 minute target', () => {
+    // estimatedMinutes is COMPUTED from the prescriptions, so this actually
+    // constrains the program. A hand-written constant here hid a real overrun:
+    // week 4's upper days ran to 60 and 62 minutes while declaring 60.
     for (const week of weeks) {
       for (const day of week.days) {
-        expect(day.estimatedMinutes).toBeLessThanOrEqual(60);
+        expect(
+          day.estimatedMinutes,
+          `W${week.weekNumber} ${day.dayType} is ${day.estimatedMinutes} min`,
+        ).toBeLessThanOrEqual(60);
       }
     }
   });
 
+  it('does not let week 4 become the longest week', () => {
+    // Week 4 is consolidation plus testing — it must not also peak in duration.
+    const longest = weeks.map((w) => Math.max(...w.days.map((d) => d.estimatedMinutes)));
+    expect(longest[3]).toBeLessThanOrEqual(58);
+    expect(longest[3]! - longest[0]!).toBeLessThanOrEqual(12);
+  });
+
+  it('holds pull-up practice volume in week 4 rather than peaking', () => {
+    const setsFor = (dayType: string) =>
+      weeks.map(
+        (w) =>
+          w.days
+            .find((d) => d.dayType === dayType)!
+            .prescriptions.find((p) => p.exerciseId === 'strict-pull-up')!.sets,
+      );
+    expect(setsFor('upperA')).toEqual([3, 4, 4, 4]);
+    expect(setsFor('upperB')).toEqual([3, 4, 4, 4]);
+  });
+
+  it('caps carry and hang progression instead of peaking in week 4', () => {
+    const highs = (dayType: string, exerciseId: string) =>
+      weeks.map(
+        (w) =>
+          w.days
+            .find((d) => d.dayType === dayType)!
+            .prescriptions.find((p) => p.exerciseId === exerciseId)!.durationSecondsHigh,
+      );
+    expect(highs('upperB', 'farmer-carry')).toEqual([45, 45, 50, 50]);
+    expect(highs('upperA', 'dead-hang')).toEqual([40, 45, 50, 50]);
+  });
+});
+
+describe('estimateSessionMinutes', () => {
+  it('charges rest once per superset round, not once per exercise', () => {
+    const pair = [
+      { sets: 3, repsHigh: 10, restSeconds: 0, blockLabel: 'Superset A', perSide: false },
+      { sets: 3, repsHigh: 10, restSeconds: 60, blockLabel: 'Superset A', perSide: false },
+    ] as never[];
+    // 3 rounds x (30s + 30s work + 60s rest) + 2 transitions = 420s = 7 min
+    expect(estimateSessionMinutes(pair)).toBe(7);
+  });
+
+  it('treats a rest-bearing item as ending its group', () => {
+    const sequential = [
+      { sets: 2, repsHigh: 10, restSeconds: 60, blockLabel: 'Skill Block', perSide: false },
+      { sets: 2, repsHigh: 10, restSeconds: 60, blockLabel: 'Skill Block', perSide: false },
+    ] as never[];
+    // Two separate groups: 2 x (2 x (30 + 60) + 30) = 420s = 7 min
+    expect(estimateSessionMinutes(sequential)).toBe(7);
+  });
+
+  it('doubles per-side work', () => {
+    const oneSide = [
+      { sets: 1, repsHigh: 10, restSeconds: 60, blockLabel: 'A', perSide: false },
+    ] as never[];
+    const twoSides = [
+      { sets: 1, repsHigh: 10, restSeconds: 60, blockLabel: 'A', perSide: true },
+    ] as never[];
+    expect(estimateSessionMinutes(twoSides)).toBeGreaterThan(estimateSessionMinutes(oneSide));
+  });
+
+  it('excludes the warm-up, which is tracked separately', () => {
+    const monday = weeks[0]!.days[0]!;
+    expect(monday.prescriptions.some((p) => p.id.includes('wu-'))).toBe(false);
+    expect(monday.estimatedMinutes).toBe(estimateSessionMinutes(monday.prescriptions));
+  });
+});
+
+describe('template structure', () => {
   it('has one canonical template per weekday driving all four weeks', () => {
     expect(DAY_TEMPLATES).toHaveLength(5);
   });
@@ -132,5 +203,47 @@ describe('push-up variations', () => {
     expect(PUSH_UP_EXERCISE_IDS).toContain('standard-push-up');
     expect(PUSH_UP_EXERCISE_IDS).toContain('decline-push-up');
     expect(PUSH_UP_EXERCISE_IDS).toContain('pike-push-up');
+  });
+});
+
+describe('seeded starting loads', () => {
+  const loaded: [string, number][] = [
+    ['glute-bridge', 20],
+    ['hip-thrust', 60],
+    ['goblet-squat', 16],
+    ['standing-calf-raise', 20],
+    ['supported-split-squat', 10],
+    ['farmer-carry', 20],
+    ['suitcase-carry', 16],
+  ];
+
+  it.each(loaded)('seeds %s at %i kg in every week', (exerciseId, weight) => {
+    const found = weeks.flatMap((w) =>
+      w.days.flatMap((d) => d.prescriptions.filter((p) => p.exerciseId === exerciseId)),
+    );
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.every((p) => p.recommendedWeight === weight)).toBe(true);
+  });
+
+  it('leaves bodyweight and band movements unloaded', () => {
+    const shouldBeNull = [
+      'step-up',
+      'sl-rdl-bodyweight',
+      'hamstring-slider-curl',
+      'strict-pull-up',
+    ];
+    for (const id of shouldBeNull) {
+      const found = weeks.flatMap((w) =>
+        w.days.flatMap((d) => d.prescriptions.filter((p) => p.exerciseId === id)),
+      );
+      expect(found.every((p) => p.recommendedWeight === null)).toBe(true);
+    }
+  });
+
+  it('keeps the goblet squat to a load you can actually hold at your chest', () => {
+    const goblet = weeks[0]!.days
+      .flatMap((d) => d.prescriptions)
+      .find((p) => p.exerciseId === 'goblet-squat')!;
+    expect(goblet.recommendedWeight).toBeLessThanOrEqual(24);
   });
 });

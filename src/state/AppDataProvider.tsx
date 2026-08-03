@@ -24,6 +24,8 @@ interface AppData {
   assessment: FinalAssessment | undefined;
   importedWeights: ImportedWeight[];
   storagePersisted: boolean;
+  /** Set when startup failed — the app shows a recovery screen instead of hanging. */
+  startupError: Error | null;
 }
 
 const AppDataContext = createContext<AppData>({
@@ -36,17 +38,27 @@ const AppDataContext = createContext<AppData>({
   assessment: undefined,
   importedWeights: [],
   storagePersisted: false,
+  startupError: null,
 });
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [seeded, setSeeded] = useState(false);
   const [storagePersisted, setStoragePersisted] = useState(false);
+  const [startupError, setStartupError] = useState<Error | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      await ensureSeeded();
-      const persisted = await requestPersistentStorage();
+      try {
+        await ensureSeeded();
+      } catch (error) {
+        // Without this the whole app would sit on "Loading your plan…" forever —
+        // including Settings, so there would be no way to export a backup of data
+        // that is still perfectly intact on disk.
+        if (!cancelled) setStartupError(error as Error);
+        return;
+      }
+      const persisted = await requestPersistentStorage().catch(() => false);
       if (cancelled) return;
       setStoragePersisted(persisted);
       setSeeded(true);
@@ -110,6 +122,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       assessment,
       importedWeights: importedWeights ?? [],
       storagePersisted,
+      startupError,
     }),
     [
       seeded,
@@ -121,6 +134,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       assessment,
       importedWeights,
       storagePersisted,
+      startupError,
     ],
   );
 

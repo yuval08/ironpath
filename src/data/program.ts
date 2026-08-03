@@ -56,11 +56,71 @@ interface DayTemplate {
   dayType: DayType;
   title: string;
   focus: string;
-  estimatedMinutes: number;
   items: TemplateItem[];
 }
 
-const REST = { short: 45, mid: 60, long: 75, skill: 90 };
+const SECONDS_PER_REP = 3;
+/** Walking to the rack, setting a band, changing the treadmill direction. */
+const TRANSITION_SECONDS = 30;
+
+function workSeconds(p: ExercisePrescription): number {
+  const sides = p.perSide ? 2 : 1;
+  if (p.minutes != null) return p.minutes * 60;
+  if (p.durationSecondsHigh != null) return p.durationSecondsHigh * sides;
+  if (p.entryStyle === 'stepsPerDirection') return (p.repsHigh ?? 12) * 1.5 * 2;
+  if (p.repsHigh != null) return p.repsHigh * SECONDS_PER_REP * sides;
+  return 30;
+}
+
+/**
+ * Splits a day into the units actually performed back-to-back: a run of
+ * prescriptions chained by `restSeconds: 0` inside one block. Rest only happens
+ * at the end of a superset, so grouping drives the whole time estimate.
+ */
+function supersetGroups(prescriptions: ExercisePrescription[]): ExercisePrescription[][] {
+  const groups: ExercisePrescription[][] = [];
+  let current: ExercisePrescription[] = [];
+  for (const p of prescriptions) {
+    const previous = current[current.length - 1];
+    if (previous && previous.blockLabel !== p.blockLabel) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(p);
+    if (p.restSeconds > 0) {
+      groups.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
+/**
+ * Estimated session length at the TOP of every rep range — the worst case.
+ * Excludes the warm-up, which is tracked separately and does not count toward
+ * the ~60 minute target.
+ */
+export function estimateSessionMinutes(prescriptions: ExercisePrescription[]): number {
+  let seconds = 0;
+  for (const group of supersetGroups(prescriptions)) {
+    const rounds = Math.max(...group.map((p) => p.sets));
+    const perRound = group.reduce((sum, p) => sum + workSeconds(p), 0);
+    const rest = group.reduce((sum, p) => sum + p.restSeconds, 0);
+    seconds += rounds * (perRound + rest) + TRANSITION_SECONDS * group.length;
+  }
+  return Math.round(seconds / 60);
+}
+
+const REST = {
+  short: 45,
+  mid: 60,
+  long: 75,
+  /** Pull-up / chin-up practice singles. Spec allows 60-90s; 75 keeps upper days inside 60 min. */
+  practice: 75,
+  /** Negatives stay at the top of the range — the eccentric is the most fatiguing work here. */
+  skill: 90,
+};
 
 export const DAY_TEMPLATES: DayTemplate[] = [
   /* ---------------------------------------------------------- Monday */
@@ -69,7 +129,6 @@ export const DAY_TEMPLATES: DayTemplate[] = [
     dayType: 'upperA',
     title: 'Upper Body A',
     focus: 'Pull-up skill, upper back, shoulder health',
-    estimatedMinutes: 60,
     items: [
       {
         exerciseId: 'scapular-pull-up',
@@ -92,10 +151,10 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         sets: 3,
         repsLow: 1,
         repsHigh: 3,
-        restSeconds: REST.skill,
+        restSeconds: REST.practice,
         entryStyle: 'reps',
         notes: 'Start with 1 clean rep per set. Never to failure.',
-        weekly: { sets: [3, 4, 4, 5], repsHigh: [2, 3, 3, 3] },
+        weekly: { sets: [3, 4, 4, 4], repsHigh: [2, 3, 3, 3] },
       },
       {
         exerciseId: 'negative-pull-up',
@@ -183,7 +242,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         durationSecondsHigh: 45,
         restSeconds: REST.mid,
         entryStyle: 'time',
-        weekly: { durationSecondsLow: [20, 25, 30, 30], durationSecondsHigh: [40, 45, 50, 60] },
+        weekly: { durationSecondsLow: [20, 25, 30, 30], durationSecondsHigh: [40, 45, 50, 50] },
       },
       {
         exerciseId: 'backward-treadmill-walk',
@@ -207,7 +266,6 @@ export const DAY_TEMPLATES: DayTemplate[] = [
     dayType: 'lowerA',
     title: 'Lower Body A',
     focus: 'Single-leg strength, knee tolerance, hip control',
-    estimatedMinutes: 60,
     items: [
       {
         exerciseId: 'step-up',
@@ -237,6 +295,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
       },
       {
         exerciseId: 'glute-bridge',
+        recommendedWeight: 20,
         block: 'B',
         blockLabel: 'Superset B',
         order: 3,
@@ -288,6 +347,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
       },
       {
         exerciseId: 'standing-calf-raise',
+        recommendedWeight: 20,
         block: 'D',
         blockLabel: 'Optional Tri-Set D',
         order: 7,
@@ -343,7 +403,6 @@ export const DAY_TEMPLATES: DayTemplate[] = [
     dayType: 'mobility',
     title: 'Mobility & Movement',
     focus: 'Joint control, balance, movement quality — finish better than you started',
-    estimatedMinutes: 55,
     items: [
       {
         exerciseId: 'forward-treadmill-walk',
@@ -489,6 +548,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
       },
       {
         exerciseId: 'suitcase-carry',
+        recommendedWeight: 16,
         block: 'circuit',
         blockLabel: 'Movement & Balance Circuit — 3 rounds',
         order: 13,
@@ -521,7 +581,6 @@ export const DAY_TEMPLATES: DayTemplate[] = [
     dayType: 'upperB',
     title: 'Upper Body B',
     focus: 'Chin-ups, pressing volume, carries',
-    estimatedMinutes: 60,
     items: [
       {
         exerciseId: 'chin-up',
@@ -531,7 +590,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         sets: 3,
         repsLow: 1,
         repsHigh: 5,
-        restSeconds: REST.skill,
+        restSeconds: REST.practice,
         entryStyle: 'reps',
         notes: 'Stop before failure.',
       },
@@ -543,11 +602,11 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         sets: 3,
         repsLow: 1,
         repsHigh: 1,
-        restSeconds: REST.skill,
+        restSeconds: REST.practice,
         entryStyle: 'reps',
         optional: true,
         notes: 'Singles only. Skip if fatigued from chin-ups.',
-        weekly: { sets: [3, 4, 4, 5] },
+        weekly: { sets: [3, 4, 4, 4] },
       },
       {
         exerciseId: 'negative-pull-up',
@@ -624,6 +683,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
       },
       {
         exerciseId: 'farmer-carry',
+        recommendedWeight: 20,
         block: 'C',
         blockLabel: 'Superset C',
         order: 9,
@@ -632,7 +692,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         durationSecondsHigh: 45,
         restSeconds: REST.mid,
         entryStyle: 'time',
-        weekly: { durationSecondsLow: [30, 35, 40, 40], durationSecondsHigh: [45, 45, 50, 60] },
+        weekly: { durationSecondsLow: [30, 35, 40, 40], durationSecondsHigh: [45, 45, 50, 50] },
       },
       {
         exerciseId: 'backward-treadmill-walk',
@@ -654,10 +714,10 @@ export const DAY_TEMPLATES: DayTemplate[] = [
     dayType: 'lowerB',
     title: 'Lower Body B',
     focus: 'Squat pattern, posterior chain, anti-rotation core',
-    estimatedMinutes: 60,
     items: [
       {
         exerciseId: 'goblet-squat',
+        recommendedWeight: 16,
         block: 'A',
         blockLabel: 'Superset A',
         order: 1,
@@ -670,6 +730,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
       },
       {
         exerciseId: 'standing-calf-raise',
+        recommendedWeight: 20,
         block: 'A',
         blockLabel: 'Superset A',
         order: 2,
@@ -681,6 +742,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
       },
       {
         exerciseId: 'supported-split-squat',
+        recommendedWeight: 10,
         block: 'B',
         blockLabel: 'Superset B',
         order: 3,
@@ -706,6 +768,7 @@ export const DAY_TEMPLATES: DayTemplate[] = [
       },
       {
         exerciseId: 'hip-thrust',
+        recommendedWeight: 60,
         block: 'C',
         blockLabel: 'Superset C',
         order: 5,
@@ -852,6 +915,19 @@ function applyWeek(item: TemplateItem, weekIndex: number): TemplateItem {
 
 export function buildWorkoutDay(template: DayTemplate, weekNumber: number): WorkoutDay {
   const weekIndex = weekNumber - 1;
+  const prescriptions = template.items.map((raw) => {
+    const item = applyWeek(raw, weekIndex);
+    const { weekly: _weekly, ...rest } = item;
+    return {
+      ...rest,
+      id: `w${weekNumber}-${template.dayType}-${item.exerciseId}-${item.order}`,
+      perSide: item.perSide ?? false,
+      optional: item.optional ?? false,
+      recommendedWeight: item.recommendedWeight ?? null,
+      substitutionIds: substitutionsFor(item.exerciseId),
+    } satisfies ExercisePrescription;
+  });
+
   return {
     id: `w${weekNumber}-${template.dayType}`,
     weekNumber,
@@ -859,19 +935,9 @@ export function buildWorkoutDay(template: DayTemplate, weekNumber: number): Work
     dayType: template.dayType,
     title: template.title,
     focus: template.focus,
-    estimatedMinutes: template.estimatedMinutes,
-    prescriptions: template.items.map((raw) => {
-      const item = applyWeek(raw, weekIndex);
-      const { weekly: _weekly, ...rest } = item;
-      return {
-        ...rest,
-        id: `w${weekNumber}-${template.dayType}-${item.exerciseId}-${item.order}`,
-        perSide: item.perSide ?? false,
-        optional: item.optional ?? false,
-        recommendedWeight: item.recommendedWeight ?? null,
-        substitutionIds: substitutionsFor(item.exerciseId),
-      } satisfies ExercisePrescription;
-    }),
+    // Computed, never hand-written — a stale constant hid a real overrun.
+    estimatedMinutes: estimateSessionMinutes(prescriptions),
+    prescriptions,
   };
 }
 

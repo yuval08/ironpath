@@ -34,54 +34,62 @@ export function defaultStartDate(from = new Date()): string {
   return format(nextMonday(startOfDay(from)), 'yyyy-MM-dd');
 }
 
-/** Seeds the four-week plan and default settings on first run. Idempotent. */
+/**
+ * Seeds the four-week plan and default settings on first run.
+ *
+ * Runs inside a single transaction and re-checks after acquiring it: React 18
+ * StrictMode double-invokes the calling effect in dev, and two open tabs race in
+ * production. Without this, both callers see an empty table and each writes a
+ * plan — leaving a second, permanently invisible plan row behind.
+ */
 export async function ensureSeeded(): Promise<{ plan: WorkoutPlan; settings: UserSettings }> {
-  const existingPlan = await db.plans.toCollection().first();
-  const existingSettings = await db.settings.get(SETTINGS_ID);
+  return db.transaction('rw', db.plans, db.settings, async () => {
+    const existingSettings = await db.settings.get(SETTINGS_ID);
+    const settings =
+      existingSettings ??
+      (base(SETTINGS_ID, {
+        userName: '',
+        weightUnit: 'kg' as const,
+        theme: 'system' as const,
+        restDefaultSeconds: 60,
+        vibrateOnRestEnd: true,
+        soundOnRestEnd: false,
+        bodyweight: null,
+        firstStrictPullUpDate: null,
+        disclaimerAcknowledged: false,
+        videoOverrides: {},
+        weightOverrides: {},
+        autoCollapseCompleted: true,
+      }) as UserSettings);
+    if (!existingSettings) await db.settings.put(settings);
 
-  const settings =
-    existingSettings ??
-    (base(SETTINGS_ID, {
-      userName: '',
-      weightUnit: 'kg' as const,
-      theme: 'system' as const,
-      restDefaultSeconds: 60,
-      vibrateOnRestEnd: true,
-      soundOnRestEnd: false,
-      bodyweight: null,
-      firstStrictPullUpDate: null,
-      disclaimerAcknowledged: false,
-      videoOverrides: {},
-      weightOverrides: {},
-      autoCollapseCompleted: true,
-    }) as UserSettings);
-  if (!existingSettings) await db.settings.put(settings);
+    const existingPlan = await db.plans.toCollection().first();
+    if (existingPlan) return { plan: existingPlan, settings };
 
-  if (existingPlan) return { plan: existingPlan, settings };
+    const startDate = defaultStartDate();
+    const year = new Date(startDate).getFullYear();
+    const plan = base(newId('plan'), {
+      name: 'Movement & Joint Resilience — 4 Week Block',
+      startDate,
+      currentWeek: 1,
+      currentDayIndex: 0,
+      weeks: buildWeeks(),
+      pausePeriods: [
+        {
+          id: newId('pause'),
+          label: TRAVEL_PAUSE_LABEL,
+          startDate: `${year}-08-10`,
+          endDate: `${year}-08-16`,
+          active: true,
+        },
+      ],
+      restartCount: 0,
+      completedAt: null,
+    }) as WorkoutPlan;
 
-  const startDate = defaultStartDate();
-  const year = new Date(startDate).getFullYear();
-  const plan = base(newId('plan'), {
-    name: 'Movement & Joint Resilience — 4 Week Block',
-    startDate,
-    currentWeek: 1,
-    currentDayIndex: 0,
-    weeks: buildWeeks(),
-    pausePeriods: [
-      {
-        id: newId('pause'),
-        label: TRAVEL_PAUSE_LABEL,
-        startDate: `${year}-08-10`,
-        endDate: `${year}-08-16`,
-        active: true,
-      },
-    ],
-    restartCount: 0,
-    completedAt: null,
-  }) as WorkoutPlan;
-
-  await db.plans.put(plan);
-  return { plan, settings };
+    await db.plans.put(plan);
+    return { plan, settings };
+  });
 }
 
 export async function getPlan(): Promise<WorkoutPlan | undefined> {
@@ -139,31 +147,46 @@ export function projectedDate(plan: WorkoutPlan, weekNumber: number, dayIndex: n
   return format(date, 'yyyy-MM-dd');
 }
 
+/**
+ * Deleting sessions and moving the cursor happen in one transaction — a failure
+ * between them would leave history erased but the cursor pointing past it.
+ *
+ * Session matching is deliberately by `dayId`, not `planId`: the destructive
+ * confirmations promise the user that everything logged for those days is gone,
+ * and a stray session carrying an older planId would otherwise survive a reset
+ * and reappear via findSessionForDay.
+ */
 export async function applyResumeChoice(choice: ResumeChoice): Promise<void> {
-  const plan = await getPlan();
-  if (!plan) return;
   if (choice === 'resume') return;
 
-  if (choice === 'restartWeek') {
-    const weekDayIds = new Set(
-      plan.weeks.find((w) => w.weekNumber === plan.currentWeek)?.days.map((d) => d.id) ?? [],
-    );
-    const sessions = await db.sessions.where('planId').equals(plan.id).toArray();
-    await db.sessions.bulkDelete(sessions.filter((s) => weekDayIds.has(s.dayId)).map((s) => s.id));
-    await updatePlan({ currentDayIndex: 0 });
-    return;
-  }
+  await db.transaction('rw', db.plans, db.sessions, db.suggestions, async () => {
+    const plan = await db.plans.toCollection().first();
+    if (!plan) return;
 
-  // restartBlock — clear every session for this plan and start over at week 1.
-  const sessions = await db.sessions.where('planId').equals(plan.id).toArray();
-  await db.sessions.bulkDelete(sessions.map((s) => s.id));
-  await db.suggestions.clear();
-  await updatePlan({
-    currentWeek: 1,
-    currentDayIndex: 0,
-    startDate: defaultStartDate(),
-    restartCount: plan.restartCount + 1,
-    completedAt: null,
+    if (choice === 'restartWeek') {
+      const weekDayIds = new Set(
+        plan.weeks.find((w) => w.weekNumber === plan.currentWeek)?.days.map((d) => d.id) ?? [],
+      );
+      const sessions = await db.sessions.toArray();
+      await db.sessions.bulkDelete(
+        sessions.filter((s) => weekDayIds.has(s.dayId)).map((s) => s.id),
+      );
+      await db.plans.put({ ...plan, currentDayIndex: 0, updatedAt: nowIso() });
+      return;
+    }
+
+    // restartBlock — wipe all logged history and start over at week 1.
+    await db.sessions.clear();
+    await db.suggestions.clear();
+    await db.plans.put({
+      ...plan,
+      currentWeek: 1,
+      currentDayIndex: 0,
+      startDate: defaultStartDate(),
+      restartCount: plan.restartCount + 1,
+      completedAt: null,
+      updatedAt: nowIso(),
+    });
   });
 }
 
@@ -319,11 +342,27 @@ export async function findSessionForDay(dayId: string): Promise<WorkoutSession |
   return rows.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 }
 
-/** Marks the session complete and advances the plan cursor. */
+/**
+ * Marks the session complete and advances the plan cursor.
+ *
+ * Two guards, both load-bearing:
+ *  - The stored row is re-read first. Finishing takes several async round-trips,
+ *    so a second tap on Finish would otherwise re-run this and advance the cursor
+ *    twice, silently dropping a training day from the block.
+ *  - The cursor only moves when the finished session IS the current day. Any day
+ *    of any week can be started from the Plan screen; completing an out-of-order
+ *    day must not shift the cursor off a day that was never trained.
+ */
 export async function completeSession(session: WorkoutSession): Promise<void> {
+  const stored = await db.sessions.get(session.id);
+  if (stored?.status === 'completed') return;
+
   await saveSession({ ...session, status: 'completed', completedAt: nowIso() });
+
   const plan = await getPlan();
   if (!plan) return;
+  if (currentDay(plan)?.id !== session.dayId) return;
+
   const week = plan.weeks.find((w) => w.weekNumber === plan.currentWeek);
   if (!week) return;
   const lastDay = plan.currentDayIndex >= week.days.length - 1;

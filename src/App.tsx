@@ -4,6 +4,7 @@ import { useAppData } from './state/AppDataProvider';
 import { useTheme } from './hooks/useTheme';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { Disclaimer } from './components/Disclaimer';
+import { RecoveryScreen } from './components/RecoveryScreen';
 import Dashboard from './screens/Dashboard';
 import PlanScreen from './screens/PlanScreen';
 import WorkoutScreen from './screens/WorkoutScreen';
@@ -29,7 +30,7 @@ const TITLES: Record<string, string> = {
 };
 
 export default function App() {
-  const { ready, settings } = useAppData();
+  const { ready, settings, startupError } = useAppData();
   const location = useLocation();
   useTheme(settings?.theme);
 
@@ -46,7 +47,9 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {!ready ? (
+        {startupError ? (
+          <RecoveryScreen error={startupError} title="Could not open your local database" />
+        ) : !ready ? (
           <p className="muted">Loading your plan…</p>
         ) : (
           <>

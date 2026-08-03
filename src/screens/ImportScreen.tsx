@@ -51,13 +51,22 @@ export default function ImportScreen() {
       return;
     }
     const overrides = { ...settings.weightOverrides };
+    let applied = 0;
     for (const row of confirmed) {
-      if (row.mappedExerciseId && row.suggestedStartWeight != null) {
-        overrides[row.mappedExerciseId] = row.suggestedStartWeight;
+      const weight = row.suggestedStartWeight;
+      // A non-finite weight would propagate NaN into every future session AND
+      // make the JSON backup unrestorable (JSON turns NaN/Infinity into null).
+      if (row.mappedExerciseId && weight != null && Number.isFinite(weight) && weight > 0) {
+        overrides[row.mappedExerciseId] = weight;
+        applied += 1;
       }
     }
+    if (applied === 0) {
+      toast('No valid starting weights to apply — check the values');
+      return;
+    }
     await updateSettings({ weightOverrides: overrides });
-    toast(`Applied ${confirmed.length} starting weights`);
+    toast(`Applied ${applied} starting weight${applied === 1 ? '' : 's'}`);
   };
 
   return (
@@ -155,12 +164,13 @@ export default function ImportScreen() {
                       inputMode="decimal"
                       step={0.5}
                       value={row.suggestedStartWeight ?? ''}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const parsed = Number(e.target.value);
                         void update(row, {
                           suggestedStartWeight:
-                            e.target.value === '' ? null : Number(e.target.value),
-                        })
-                      }
+                            e.target.value === '' || !Number.isFinite(parsed) ? null : parsed,
+                        });
+                      }}
                     />
                   </label>
                   <div className="stat">

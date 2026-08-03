@@ -95,13 +95,15 @@ describe('detectProgressions', () => {
     expect(detectProgressions(sessions, accepted)).toHaveLength(0);
   });
 
-  it('re-raises after a suggestion was dismissed', () => {
+  it('does not re-raise a dismissed suggestion', () => {
+    // Re-raising would mint a new row after every completed session, so the user
+    // would accumulate duplicates of advice they already declined.
     const sessions = [cleanSession(), cleanSession()];
     const dismissed = detectProgressions(sessions).map((s) => ({
       ...s,
       status: 'dismissed' as const,
     }));
-    expect(detectProgressions(sessions, dismissed)).toHaveLength(1);
+    expect(detectProgressions(sessions, dismissed)).toHaveLength(0);
   });
 
   it('produces a pending suggestion with a human-readable reason', () => {
@@ -146,5 +148,38 @@ describe('suggestStartWeight', () => {
 
   it('never returns less than the lightest usable load', () => {
     expect(suggestStartWeight(1)).toBe(2.5);
+  });
+});
+
+describe('substitution and dismissal handling (regression)', () => {
+  const substitutedSession = () =>
+    makeSession({
+      results: [
+        makeResult(
+          'strict-pull-up',
+          [
+            { reps: 6, rpe: 6 },
+            { reps: 6, rpe: 6 },
+          ],
+          { substitutionExerciseId: 'band-assisted-pull-up' },
+        ),
+      ],
+    });
+
+  it('suggests progressing the exercise actually performed', () => {
+    const [suggestion] = detectProgressions([substitutedSession(), substitutedSession()]);
+    expect(suggestion?.exerciseId).toBe('band-assisted-pull-up');
+    expect(suggestion?.exerciseName).toBe('Band-Assisted Pull-Up');
+    // Band-assisted gets the assistance-reduction advice, not "add a clean rep".
+    expect(suggestion?.kind).toBe('assistance');
+  });
+
+  it('never re-raises a dismissed suggestion', () => {
+    const sessions = [substitutedSession(), substitutedSession()];
+    const dismissed = detectProgressions(sessions).map((s) => ({
+      ...s,
+      status: 'dismissed' as const,
+    }));
+    expect(detectProgressions(sessions, dismissed)).toHaveLength(0);
   });
 });

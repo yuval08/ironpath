@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react';
-import type { EntryStyle, SetResult } from '@/types';
+import type { EntryStyle, LoadType, SetResult } from '@/types';
 
 interface FieldSpec {
   key: keyof SetResult;
@@ -8,39 +8,53 @@ interface FieldSpec {
   placeholder?: string;
 }
 
-/** The three inputs a set shows depend on how the exercise is measured. */
-export function fieldsFor(entryStyle: EntryStyle, weightLabel: string): FieldSpec[] {
+/**
+ * Which inputs a set shows. Driven by how the exercise is measured AND whether it
+ * can carry external load at all — a push-up, a pull-up or a band drill has no
+ * weight to type, so that column becomes RIR instead of a dead kg box.
+ */
+export function canBeLoaded(loadType: LoadType): boolean {
+  return (
+    loadType === 'dumbbell' ||
+    loadType === 'kettlebell' ||
+    loadType === 'barbell' ||
+    loadType === 'machine'
+  );
+}
+
+export function fieldsFor(
+  entryStyle: EntryStyle,
+  weightLabel: string,
+  loadType: LoadType = 'dumbbell',
+): FieldSpec[] {
+  const loaded = canBeLoaded(loadType);
+  const weight: FieldSpec = { key: 'weight', label: weightLabel, step: 0.5, placeholder: 'wt' };
+  const rpe: FieldSpec = { key: 'rpe', label: 'RPE', step: 0.5, placeholder: 'rpe' };
+  const rir: FieldSpec = { key: 'rir', label: 'RIR', placeholder: 'rir' };
+
   switch (entryStyle) {
     case 'reps':
-      return [
-        { key: 'weight', label: weightLabel, step: 0.5, placeholder: 'wt' },
-        { key: 'reps', label: 'Reps', placeholder: 'reps' },
-        { key: 'rpe', label: 'RPE', step: 0.5, placeholder: 'rpe' },
-      ];
+      return loaded
+        ? [weight, { key: 'reps', label: 'Reps', placeholder: 'reps' }, rpe]
+        : [{ key: 'reps', label: 'Reps', placeholder: 'reps' }, rpe, rir];
     case 'repsPerSide':
       return [
         { key: 'repsLeft', label: 'Left', placeholder: 'L' },
         { key: 'repsRight', label: 'Right', placeholder: 'R' },
-        { key: 'weight', label: weightLabel, step: 0.5, placeholder: 'wt' },
+        loaded ? weight : rpe,
       ];
     case 'time':
-      return [
-        { key: 'durationSeconds', label: 'Seconds', placeholder: 'sec' },
-        { key: 'weight', label: weightLabel, step: 0.5, placeholder: 'wt' },
-        { key: 'rpe', label: 'RPE', step: 0.5, placeholder: 'rpe' },
-      ];
+      return loaded
+        ? [{ key: 'durationSeconds', label: 'Seconds', placeholder: 'sec' }, weight, rpe]
+        : [{ key: 'durationSeconds', label: 'Seconds', placeholder: 'sec' }, rpe, rir];
     case 'timePerSide':
-      return [
-        { key: 'durationSeconds', label: 'Sec / side', placeholder: 'sec' },
-        { key: 'weight', label: weightLabel, step: 0.5, placeholder: 'wt' },
-        { key: 'rpe', label: 'RPE', step: 0.5, placeholder: 'rpe' },
-      ];
+      return loaded
+        ? [{ key: 'durationSeconds', label: 'Sec / side', placeholder: 'sec' }, weight, rpe]
+        : [{ key: 'durationSeconds', label: 'Sec / side', placeholder: 'sec' }, rpe, rir];
     case 'distance':
-      return [
-        { key: 'distanceMeters', label: 'Metres', placeholder: 'm' },
-        { key: 'weight', label: weightLabel, step: 0.5, placeholder: 'wt' },
-        { key: 'rpe', label: 'RPE', step: 0.5, placeholder: 'rpe' },
-      ];
+      return loaded
+        ? [{ key: 'distanceMeters', label: 'Metres', placeholder: 'm' }, weight, rpe]
+        : [{ key: 'distanceMeters', label: 'Metres', placeholder: 'm' }, rpe, rir];
     case 'stepsPerDirection':
       return [
         { key: 'reps', label: 'Steps / way', placeholder: 'steps' },
@@ -62,6 +76,7 @@ export function SetRow({
   set,
   entryStyle,
   weightLabel,
+  loadType,
   showLabels,
   onChange,
   onToggle,
@@ -69,11 +84,12 @@ export function SetRow({
   set: SetResult;
   entryStyle: EntryStyle;
   weightLabel: string;
+  loadType: LoadType;
   showLabels: boolean;
   onChange: (next: SetResult) => void;
   onToggle: () => void;
 }) {
-  const fields = fieldsFor(entryStyle, weightLabel);
+  const fields = fieldsFor(entryStyle, weightLabel, loadType);
 
   return (
     <>

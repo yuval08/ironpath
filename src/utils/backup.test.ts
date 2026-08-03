@@ -52,6 +52,10 @@ describe('backup', () => {
   });
 
   it('replaces existing data rather than merging it', async () => {
+    // A real backup always carries a plan and settings — restoring one without
+    // them is rejected outright (see the empty-backup guard below).
+    await db.plans.put(makePlan());
+    await db.settings.put(makeSettings());
     await db.sessions.put(makeSession({ id: 'stale' }));
     const backup = await buildBackup();
     backup.sessions = [makeSession({ id: 'fresh' })];
@@ -76,5 +80,24 @@ describe('backup', () => {
     await db.sessions.put(makeSession({ id: 'keep-me' }));
     await expect(restoreBackup({ nope: true })).rejects.toThrow();
     expect(await db.sessions.get('keep-me')).toBeDefined();
+  });
+});
+
+describe('empty backup guard (regression)', () => {
+  /**
+   * Restoring an empty-but-schema-valid backup used to clear every table and
+   * leave the app on the loading screen, since seeding only runs at startup.
+   */
+  it('refuses a backup with no plan or settings and leaves data intact', async () => {
+    await db.plans.put(makePlan());
+    await db.sessions.put(makeSession({ id: 'keep' }));
+    const backup = await buildBackup();
+
+    await expect(restoreBackup({ ...backup, plans: [], settings: [] })).rejects.toThrow(
+      /no plan or settings/i,
+    );
+
+    expect(await db.plans.count()).toBe(1);
+    expect(await db.sessions.get('keep')).toBeDefined();
   });
 });

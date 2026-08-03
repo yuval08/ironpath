@@ -4,6 +4,7 @@ import { updateSettings } from '@/db/repository';
 import { LineChart, type Point } from '@/components/Charts';
 import {
   completedSessions,
+  performedExerciseId,
   maxDurationForExercise,
   maxRepsForExercise,
   setReps,
@@ -28,21 +29,21 @@ export default function PullUpScreen() {
     .map((s) => ({
       label: s.date.slice(5),
       value: s.results
-        .filter((r) => r.exerciseId === 'strict-pull-up')
+        .filter((r) => performedExerciseId(r) === 'strict-pull-up' && r.skippedReason == null)
         .flatMap((r) => r.sets.filter((x) => x.completed))
         .reduce((max, x) => Math.max(max, setReps(x)), 0),
     }))
     .filter((p) => p.value > 0);
 
   const currentBand = done
-    .flatMap((s) => s.results.filter((r) => r.exerciseId === 'band-assisted-pull-up'))
+    .flatMap((s) => s.results.filter((r) => performedExerciseId(r) === 'band-assisted-pull-up'))
     .flatMap((r) => r.sets)
     .map((s) => s.band)
     .filter((b): b is BandResistance => !!b)
     .pop();
 
   const negativeLowering = done
-    .flatMap((s) => s.results.filter((r) => r.exerciseId === 'negative-pull-up'))
+    .flatMap((s) => s.results.filter((r) => performedExerciseId(r) === 'negative-pull-up'))
     .flatMap((r) => r.sets.filter((x) => x.completed))
     .reduce((max, x) => Math.max(max, x.durationSeconds ?? 0), 0);
 
@@ -91,7 +92,7 @@ export default function PullUpScreen() {
           <div className="label">Max chin-ups</div>
         </div>
         <div className="stat">
-          <div className="value">{negativeLowering || '—'}s</div>
+          <div className="value">{negativeLowering ? `${negativeLowering}s` : '—'}</div>
           <div className="label">Longest negative lowering</div>
         </div>
         <div className="stat">

@@ -1,6 +1,6 @@
 import type ExcelJS from 'exceljs';
 import { loadExcelJS } from './excelModule';
-import { EXERCISES } from '@/data/exercises';
+import { EXERCISES, EXERCISE_BY_ID } from '@/data/exercises';
 import { newId, nowIso } from '@/db/db';
 import { SCHEMA_VERSION, type ImportedWeight, type WeightUnit } from '@/types';
 import { suggestStartWeight } from './progression';
@@ -83,14 +83,17 @@ export function parseWorkbookRows(wb: ExcelJS.Workbook): ParsedRow[] {
       const name = texts[exerciseCol];
       if (!name || name.length < 3) return;
       // Skip section headings like "Upper" / "Lower" that have no numeric data.
-      const weights = weightCols
-        .map((c) => cellNumber(row.getCell(c).value))
-        .filter((v): v is number => v != null && v > 0);
-      if (weights.length === 0) return;
+      // Carry the column alongside the value: filtering first and then indexing
+      // the unfiltered column list reads reps from a different set whenever a
+      // blank or zero weight sits to the left of the best one.
+      const scored = weightCols
+        .map((col) => ({ col, value: cellNumber(row.getCell(col).value) }))
+        .filter((x): x is { col: number; value: number } => x.value != null && x.value > 0);
+      if (scored.length === 0) return;
 
-      const bestWeight = Math.max(...weights);
-      const bestIndex = weightCols[weights.indexOf(bestWeight)];
-      const repsCol = repsCols[weightCols.indexOf(bestIndex ?? -1)];
+      const best = scored.reduce((a, b) => (b.value > a.value ? b : a));
+      const bestWeight = best.value;
+      const repsCol = repsCols[weightCols.indexOf(best.col)];
       const bestReps = repsCol ? cellNumber(row.getCell(repsCol).value) : null;
 
       rows.push({ sheet: sheet.name, exercise: name, bestWeight, bestReps });
@@ -122,6 +125,26 @@ const STOP_WORDS = new Set([
   'per',
   'side',
   'leg',
+]);
+
+/**
+ * Words shared by many unrelated movements. Matching on one of these alone maps
+ * a leg press to a Pallof press, so they only count alongside a specific word.
+ */
+const GENERIC_TOKENS = new Set([
+  'press',
+  'row',
+  'raise',
+  'curl',
+  'extension',
+  'squat',
+  'walk',
+  'hold',
+  'pull',
+  'push',
+  'up',
+  'down',
+  'lift',
 ]);
 
 /** Extra aliases that token overlap alone would miss. */
@@ -159,17 +182,29 @@ export function scoreMatch(sourceName: string, exerciseId: string, exerciseName:
   if (source.length === 0) return 0;
   const sourceSet = new Set(source);
 
-  const candidates = [exerciseName, ...(ALIASES[exerciseId] ?? [])];
   let best = 0;
-  for (const candidate of candidates) {
-    const target = tokenize(candidate);
-    if (target.length === 0) continue;
-    const overlap = target.filter((t) => sourceSet.has(t)).length;
-    if (overlap === 0) continue;
-    // Reward matching a high proportion of the *target* name.
-    const score = overlap / target.length + overlap / source.length / 2;
-    best = Math.max(best, score);
+
+  // The exercise's own name scores proportionally — but a shared GENERIC word is
+  // not a match on its own. "Leg press" and "Standing Pallof Press" share only
+  // "press"; "DB Lateral Raise" and "Standing Calf Raise" only "raise".
+  const name = tokenize(exerciseName);
+  if (name.length > 0) {
+    const shared = name.filter((t) => sourceSet.has(t));
+    const meaningful = shared.some((t) => !GENERIC_TOKENS.has(t));
+    if (shared.length > 0 && (meaningful || shared.length === name.length)) {
+      best = shared.length / name.length + shared.length / source.length / 2;
+    }
   }
+
+  // Aliases must appear in FULL. A partial alias hit is how "Leg press" matched
+  // the "floor press" alias and became a Standard Push-Up.
+  for (const alias of ALIASES[exerciseId] ?? []) {
+    const target = tokenize(alias);
+    if (target.length === 0) continue;
+    if (!target.every((t) => sourceSet.has(t))) continue;
+    best = Math.max(best, 1 + target.length / source.length / 2);
+  }
+
   return best;
 }
 
@@ -217,6 +252,12 @@ export async function parseLegacyTracker(
   const ts = nowIso();
   const weights: ImportedWeight[] = [...grouped.entries()].map(([name, info]) => {
     const match = bestExerciseMatch(name);
+    // A previous barbell/machine load means nothing for a movement that carries no
+    // external load — a pull-up, an inverted row, a slider curl. Suggesting one
+    // there is worse than suggesting nothing.
+    const target = match ? EXERCISE_BY_ID[match.id] : undefined;
+    const takesLoad =
+      target != null && target.loadType !== 'bodyweight' && target.loadType !== 'none';
     return {
       id: newId('imported'),
       createdAt: ts,
@@ -229,7 +270,7 @@ export async function parseLegacyTracker(
       unit,
       occurrences: info.count,
       confirmed: false,
-      suggestedStartWeight: suggestStartWeight(info.best),
+      suggestedStartWeight: takesLoad ? suggestStartWeight(info.best) : null,
     };
   });
 

@@ -5,6 +5,12 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   base: './',
+  // Stamped into the bundle so Settings can show which build the device is
+  // actually running — otherwise there is no way to tell a stale install apart
+  // from a current one.
+  define: {
+    __BUILD_ID__: JSON.stringify(new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC'),
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
@@ -56,4 +62,9 @@ export default defineConfig({
     }),
   ],
   build: { target: 'es2020', chunkSizeWarningLimit: 1200 },
+  // Vite rejects unknown Host headers. The app is reached from the phone through
+  // `tailscale serve`, which forwards with the tailnet hostname as Host.
+  preview: {
+    allowedHosts: ['fedora.taild6580d.ts.net', 'localhost', '127.0.0.1'],
+  },
 });

@@ -2,7 +2,7 @@ import { exerciseName, getExercise } from '@/data/exercises';
 import { newId, nowIso } from '@/db/db';
 import { SCHEMA_VERSION } from '@/types';
 import type { ExerciseResult, ProgressionSuggestion, WorkoutSession } from '@/types';
-import { setReps } from './stats';
+import { performedExerciseId, setReps } from './stats';
 
 /**
  * Progression is *suggested*, never applied automatically. A suggestion fires when
@@ -95,14 +95,17 @@ export function detectProgressions(
     if (session.status !== 'completed') continue;
     for (const result of session.results) {
       if (!isSuccessfulResult(result)) continue;
-      successCount.set(result.exerciseId, (successCount.get(result.exerciseId) ?? 0) + 1);
-      lastResult.set(result.exerciseId, result);
+      // Key by the exercise actually performed — a substituted movement must not
+      // earn a progression suggestion for the exercise it replaced.
+      const id = performedExerciseId(result);
+      successCount.set(id, (successCount.get(id) ?? 0) + 1);
+      lastResult.set(id, result);
     }
   }
 
-  const handled = new Set(
-    existing.filter((s) => s.status !== 'dismissed').map((s) => s.exerciseId),
-  );
+  // Dismissed suggestions are included: re-raising one would mint a fresh row
+  // after every completed session and pile up duplicates the user already refused.
+  const handled = new Set(existing.map((s) => s.exerciseId));
 
   const out: ProgressionSuggestion[] = [];
   for (const [exerciseId, count] of successCount) {

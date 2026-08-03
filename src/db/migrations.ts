@@ -39,7 +39,15 @@ export function migrateRecord<T extends { schemaVersion?: number }>(row: T): T {
       version = migration.to;
     }
   }
-  current.schemaVersion = Math.max(version, SCHEMA_VERSION);
+  // Stamp only the version actually reached. Claiming SCHEMA_VERSION here would
+  // mark untransformed records as current — and repository writes persist that
+  // lie — hiding the fact that a migration step was never registered.
+  if (version < SCHEMA_VERSION && MIGRATIONS.length > 0) {
+    console.warn(
+      `[migrations] record left at schema ${version}, app expects ${SCHEMA_VERSION} — a migration step is missing.`,
+    );
+  }
+  current.schemaVersion = version === 0 ? SCHEMA_VERSION : version;
   return current as T;
 }
 

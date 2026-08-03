@@ -113,6 +113,7 @@ export function ExerciseCard({
               set={set}
               entryStyle={prescription.entryStyle}
               weightLabel={weightUnit}
+              loadType={def?.loadType ?? 'bodyweight'}
               showLabels={i === 0}
               onChange={(next) => updateSet(i, next)}
               onToggle={() => toggleSet(i)}

@@ -68,3 +68,33 @@ describe('parseLegacyTracker (real 12-week tracker)', () => {
     expect(weights.every((w) => w.id.startsWith('imported_'))).toBe(true);
   });
 });
+
+describe('set-column alignment (regression)', () => {
+  /**
+   * A blank or zero weight to the left of the best set used to shift the reps
+   * lookup, reporting a different set's rep count on the import confirm screen.
+   */
+  it('reads reps from the same set the best weight came from', async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet('Wk01');
+    sheet.addRow([
+      'Exercise',
+      'Target Reps',
+      'S1 Wt',
+      'S1 Reps',
+      'S2 Wt',
+      'S2 Reps',
+      'S3 Wt',
+      'S3 Reps',
+    ]);
+    // S1 is a bodyweight set (no weight, 20 reps); the best weight is S2's 60x8.
+    sheet.addRow(['Chest Supported Row', '8-12', null, 20, 60, 8, 50, 10]);
+    const buffer = await wb.xlsx.writeBuffer();
+
+    const { weights } = await parseLegacyTracker(new Uint8Array(buffer as ArrayBuffer));
+    const row = weights.find((w) => w.sourceExerciseName === 'Chest Supported Row');
+    expect(row?.bestWeight).toBe(60);
+    expect(row?.bestReps).toBe(8);
+  });
+});

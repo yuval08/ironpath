@@ -69,6 +69,20 @@ function averageOfPairs(
 /* Volume & completion                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * What was ACTUALLY performed. `exerciseId` is the planned slot; substituting sets
+ * `substitutionExerciseId`. Matching on the slot credits band-assisted reps to
+ * strict pull-ups — the substitution this program offers first.
+ */
+export function performedExerciseId(result: ExerciseResult): string {
+  return result.substitutionExerciseId ?? result.exerciseId;
+}
+
+/** Skipped exercises never count toward records or totals. */
+function counts(result: ExerciseResult, exerciseId: string): boolean {
+  return result.skippedReason == null && performedExerciseId(result) === exerciseId;
+}
+
 export function completedSessions(sessions: WorkoutSession[]): WorkoutSession[] {
   return sessions.filter((s) => s.status === 'completed');
 }
@@ -95,7 +109,9 @@ export function pushUpTotal(sessions: WorkoutSession[]): number {
     (sum, session) =>
       sum +
       session.results
-        .filter((r) => PUSH_UP_EXERCISE_IDS.includes(r.exerciseId))
+        .filter(
+          (r) => r.skippedReason == null && PUSH_UP_EXERCISE_IDS.includes(performedExerciseId(r)),
+        )
         .reduce((s, r) => s + exerciseReps(r), 0),
     0,
   );
@@ -106,8 +122,9 @@ export function pushUpBreakdown(sessions: WorkoutSession[]): Record<string, numb
   for (const id of PUSH_UP_EXERCISE_IDS) out[id] = 0;
   for (const session of sessions) {
     for (const result of session.results) {
-      if (PUSH_UP_EXERCISE_IDS.includes(result.exerciseId)) {
-        out[result.exerciseId] = (out[result.exerciseId] ?? 0) + exerciseReps(result);
+      const id = performedExerciseId(result);
+      if (result.skippedReason == null && PUSH_UP_EXERCISE_IDS.includes(id)) {
+        out[id] = (out[id] ?? 0) + exerciseReps(result);
       }
     }
   }
@@ -123,7 +140,7 @@ export function maxRepsForExercise(sessions: WorkoutSession[], exerciseId: strin
   let max = 0;
   for (const session of sessions) {
     for (const result of session.results) {
-      if (result.exerciseId !== exerciseId) continue;
+      if (!counts(result, exerciseId)) continue;
       for (const set of result.sets) {
         if (!set.completed) continue;
         max = Math.max(max, setReps(set));
@@ -137,9 +154,7 @@ export function totalRepsForExercise(sessions: WorkoutSession[], exerciseId: str
   return sessions.reduce(
     (sum, session) =>
       sum +
-      session.results
-        .filter((r) => r.exerciseId === exerciseId)
-        .reduce((s, r) => s + exerciseReps(r), 0),
+      session.results.filter((r) => counts(r, exerciseId)).reduce((s, r) => s + exerciseReps(r), 0),
     0,
   );
 }
@@ -148,7 +163,7 @@ export function maxDurationForExercise(sessions: WorkoutSession[], exerciseId: s
   let max = 0;
   for (const session of sessions) {
     for (const result of session.results) {
-      if (result.exerciseId !== exerciseId) continue;
+      if (!counts(result, exerciseId)) continue;
       for (const set of result.sets) {
         if (!set.completed) continue;
         max = Math.max(max, set.durationSeconds ?? 0);
@@ -162,7 +177,7 @@ export function maxTreadmillMinutes(sessions: WorkoutSession[], exerciseId: stri
   let max = 0;
   for (const session of sessions) {
     for (const result of session.results) {
-      if (result.exerciseId !== exerciseId) continue;
+      if (!counts(result, exerciseId)) continue;
       for (const set of result.sets) {
         if (!set.completed) continue;
         max = Math.max(max, set.treadmillMinutes ?? 0);
@@ -176,7 +191,7 @@ export function maxTreadmillSpeed(sessions: WorkoutSession[], exerciseId: string
   let max = 0;
   for (const session of sessions) {
     for (const result of session.results) {
-      if (result.exerciseId !== exerciseId) continue;
+      if (!counts(result, exerciseId)) continue;
       for (const set of result.sets) {
         max = Math.max(max, set.treadmillSpeed ?? 0);
       }

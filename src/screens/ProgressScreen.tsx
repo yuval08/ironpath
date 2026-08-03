@@ -8,6 +8,7 @@ import {
   averageRpe,
   completedSessions,
   completionPercent,
+  performedExerciseId,
   pushUpTotalForWeek,
   sessionVolume,
   setReps,
@@ -27,7 +28,7 @@ function bestSetSeries(
   const points: Point[] = [];
   for (const session of sessions) {
     const value = session.results
-      .filter((r) => (r.substitutionExerciseId ?? r.exerciseId) === exerciseId)
+      .filter((r) => performedExerciseId(r) === exerciseId && r.skippedReason == null)
       .flatMap((r) => r.sets.filter((s) => s.completed))
       .reduce((max, s) => Math.max(max, pick(s) || 0), 0);
     if (value > 0) points.push({ label: shortLabel(session), value });

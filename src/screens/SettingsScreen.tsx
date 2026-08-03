@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, FileSpreadsheet, HardDrive, Upload, Video } from 'lucide-react';
+import { Download, FileSpreadsheet, HardDrive, Info, Upload, Video } from 'lucide-react';
 import { useAppData } from '@/state/AppDataProvider';
 import { useToast } from '@/state/ToastProvider';
 import { ConfirmButton, Sheet } from '@/components/Sheet';
@@ -91,11 +91,15 @@ export default function SettingsScreen() {
               inputMode="decimal"
               step={0.1}
               value={settings.bodyweight ?? ''}
-              onChange={(e) =>
+              onChange={(e) => {
+                const parsed = Number(e.target.value);
                 void updateSettings({
-                  bodyweight: e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
+                  bodyweight:
+                    e.target.value === '' || !Number.isFinite(parsed) || parsed <= 0
+                      ? null
+                      : parsed,
+                });
+              }}
             />
           </label>
         </div>
@@ -182,7 +186,11 @@ export default function SettingsScreen() {
           </button>
           <button
             className="btn block"
-            onClick={() => void downloadBackup().then((n) => toast(`Saved ${n}`))}
+            onClick={() =>
+              void downloadBackup()
+                .then((n) => toast(`Saved ${n}`))
+                .catch((error: Error) => toast(`Backup failed: ${error.message}`))
+            }
           >
             <Download size={17} /> Export all data as JSON
           </button>
@@ -220,6 +228,26 @@ export default function SettingsScreen() {
           {storage
             ? `${(storage.usage / 1024 / 1024).toFixed(1)} MB used of ${(storage.quota / 1024 / 1024).toFixed(0)} MB available.`
             : 'Storage estimate unavailable in this browser.'}
+        </p>
+      </div>
+
+      <div className="card">
+        <div className="card-title">
+          <div className="row tight">
+            <Info size={17} />
+            <h3>Version</h3>
+          </div>
+        </div>
+        {/* The only way to tell an up-to-date install from a stale cached one. */}
+        <div className="row tight" style={{ justifyContent: 'space-between' }}>
+          <span className="muted tiny">Build</span>
+          <span className="tiny" style={{ fontWeight: 700 }}>
+            {__BUILD_ID__}
+          </span>
+        </div>
+        <p className="muted tiny" style={{ margin: '8px 0 0' }}>
+          If this is older than the build on your machine, the app is still running from cache —
+          relaunch and tap Update when prompted.
         </p>
       </div>
 

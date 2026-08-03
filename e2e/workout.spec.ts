@@ -62,6 +62,102 @@ async function completeWorkout(page: Page) {
   await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
 }
 
+/**
+ * Regressions for defects found in review. Each reproduces the original failure
+ * exactly, so a future refactor that reintroduces one fails here.
+ */
+test.describe('mid-session robustness', () => {
+  test('keeps the elapsed time after a reload', async ({ page }) => {
+    await freshApp(page);
+    await page.clock.install();
+    await page.getByRole('button', { name: /Start today's workout/i }).click();
+    await page.getByRole('button', { name: /Warm-up done/i }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+
+    await page.clock.fastForward(300_000); // five minutes of training
+    await expect(page.locator('.timer-value')).toHaveText(/[45]:\d\d/);
+
+    // Wait for the periodic flush to actually land before reloading, otherwise
+    // the test races the write it is meant to be verifying.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              new Promise<number>((resolve, reject) => {
+                const req = indexedDB.open('movement-resilience');
+                req.onsuccess = () => {
+                  const all = req.result
+                    .transaction('sessions', 'readonly')
+                    .objectStore('sessions')
+                    .getAll();
+                  all.onsuccess = () => resolve(all.result[0]?.elapsedSeconds ?? 0);
+                  all.onerror = () => reject(all.error);
+                };
+                req.onerror = () => reject(req.error);
+              }),
+          ),
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThan(0);
+
+    await page.reload();
+    // Previously reset to 0:00 — elapsed only reached IndexedDB on pause.
+    await expect(page.locator('.timer-value')).toHaveText(/[45]:\d\d/);
+  });
+
+  test('lets you add notes to an exercise you already completed', async ({ page }) => {
+    await freshApp(page);
+    await page.getByRole('button', { name: /Start today's workout/i }).click();
+    await page.getByRole('button', { name: /Warm-up done/i }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+
+    await page.getByRole('button', { name: 'Complete all' }).first().click();
+    const skipRest = page.getByRole('button', { name: 'Skip rest' });
+    if (await skipRest.isVisible().catch(() => false)) await skipRest.click();
+
+    // Re-open the finished exercise and type — this used to slam the card shut
+    // on the first keystroke because auto-collapse re-ran on every change.
+    await page.getByRole('button', { name: /Scapular Pull-Up/ }).click();
+    const notes = page.getByPlaceholder('Cues, how it felt, anything to remember').first();
+    await notes.fill('shoulders felt good');
+    await expect(notes).toHaveValue('shoulders felt good');
+
+    await page.reload();
+    await page.getByRole('button', { name: /Scapular Pull-Up/ }).click();
+    await expect(
+      page.getByPlaceholder('Cues, how it felt, anything to remember').first(),
+    ).toHaveValue('shoulders felt good');
+  });
+
+  test('does not skip a training day when Finish is double-tapped', async ({ page }) => {
+    await freshApp(page);
+    await completeWorkout(page);
+
+    await page.getByRole('link', { name: 'Home' }).click();
+    // Cursor must land on day 2, not day 3.
+    await expect(page.getByText('Lower Body A')).toBeVisible();
+    const plan = await page.evaluate(
+      () =>
+        new Promise<{ week: number; day: number }>((resolve, reject) => {
+          const req = indexedDB.open('movement-resilience');
+          req.onsuccess = () => {
+            const store = req.result.transaction('plans', 'readonly').objectStore('plans');
+            const all = store.getAll();
+            all.onsuccess = () =>
+              resolve({
+                week: all.result[0].currentWeek,
+                day: all.result[0].currentDayIndex,
+              });
+            all.onerror = () => reject(all.error);
+          };
+          req.onerror = () => reject(req.error);
+        }),
+    );
+    expect(plan).toEqual({ week: 1, day: 1 });
+  });
+});
+
 test.describe('Movement & Joint Resilience PWA', () => {
   test('completes a workout and records it on the dashboard', async ({ page }) => {
     await freshApp(page);

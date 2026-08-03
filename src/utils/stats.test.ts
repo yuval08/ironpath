@@ -273,3 +273,79 @@ describe('convertWeight', () => {
     expect(convertWeight(42.55, 'kg', 'kg')).toBe(42.6);
   });
 });
+
+/**
+ * Regression: `exerciseId` is the planned slot and `substitutionExerciseId` is what
+ * was actually done. Matching on the slot credited band-assisted reps to strict
+ * pull-ups on the Dashboard while the Progress chart showed zero for the same data.
+ */
+describe('substitution attribution', () => {
+  const substituted = [
+    makeSession({
+      results: [
+        makeResult('strict-pull-up', [{ reps: 8 }], {
+          substitutionExerciseId: 'band-assisted-pull-up',
+        }),
+      ],
+    }),
+  ];
+
+  it('credits reps to the exercise performed, not the one it replaced', () => {
+    expect(maxRepsForExercise(substituted, 'strict-pull-up')).toBe(0);
+    expect(maxRepsForExercise(substituted, 'band-assisted-pull-up')).toBe(8);
+    expect(totalRepsForExercise(substituted, 'strict-pull-up')).toBe(0);
+    expect(totalRepsForExercise(substituted, 'band-assisted-pull-up')).toBe(8);
+  });
+
+  it('does not count a substituted movement toward the push-up total', () => {
+    const sessions = [
+      makeSession({
+        results: [
+          makeResult('standard-push-up', [{ reps: 20 }], {
+            substitutionExerciseId: 'dead-hang',
+          }),
+        ],
+      }),
+    ];
+    expect(pushUpTotal(sessions)).toBe(0);
+  });
+
+  it('counts a substitution that is itself a push-up variation', () => {
+    const sessions = [
+      makeSession({
+        results: [
+          makeResult('decline-push-up', [{ reps: 12 }], {
+            substitutionExerciseId: 'standard-push-up',
+          }),
+        ],
+      }),
+    ];
+    expect(pushUpTotal(sessions)).toBe(12);
+    expect(pushUpBreakdown(sessions)['standard-push-up']).toBe(12);
+    expect(pushUpBreakdown(sessions)['decline-push-up']).toBe(0);
+  });
+
+  it('excludes skipped exercises from records and totals', () => {
+    const sessions = [
+      makeSession({
+        results: [makeResult('strict-pull-up', [{ reps: 5 }], { skippedReason: 'Shoulder pain' })],
+      }),
+    ];
+    expect(maxRepsForExercise(sessions, 'strict-pull-up')).toBe(0);
+    expect(totalRepsForExercise(sessions, 'strict-pull-up')).toBe(0);
+  });
+
+  it('still reports duration records for a substituted hold', () => {
+    const sessions = [
+      makeSession({
+        results: [
+          makeResult('dead-hang', [{ durationSeconds: 40 }], {
+            substitutionExerciseId: 'bear-crawl',
+          }),
+        ],
+      }),
+    ];
+    expect(maxDurationForExercise(sessions, 'dead-hang')).toBe(0);
+    expect(maxDurationForExercise(sessions, 'bear-crawl')).toBe(40);
+  });
+});

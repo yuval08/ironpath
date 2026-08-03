@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, Pause, Play, Plus, X } from 'lucide-react';
 import { useAppData } from '@/state/AppDataProvider';
@@ -37,6 +37,8 @@ export default function WorkoutScreen() {
   const [painBeforeOpen, setPainBeforeOpen] = useState(false);
   const [painAfterOpen, setPainAfterOpen] = useState(false);
   const [painDraft, setPainDraft] = useState<PainEntry>(EMPTY_PAIN);
+  const [finishing, setFinishing] = useState(false);
+  const finishingRef = useRef(false);
 
   const stopwatch = useStopwatch(0, false);
   const rest = useRestTimer({
@@ -67,14 +69,62 @@ export default function WorkoutScreen() {
   }, [sessionId]);
 
   /* ---------------------------------------------------- persist timer */
+  // The live elapsed value is read through a ref so the writer below is not keyed
+  // on it — an effect that re-runs every tick can never let its own timeout fire.
+  const elapsedRef = useRef(stopwatch.elapsed);
+  elapsedRef.current = stopwatch.elapsed;
+
+  const sessionId_ = session?.id;
+  const sessionStatus = session?.status;
+  const timerRunning = stopwatch.running;
+
   useEffect(() => {
-    if (!session || session.status !== 'inProgress') return;
-    if (stopwatch.elapsed === session.elapsedSeconds) return;
-    const id = window.setTimeout(() => {
-      void db.sessions.update(session.id, { elapsedSeconds: stopwatch.elapsed });
-    }, 4000);
-    return () => window.clearTimeout(id);
-  }, [stopwatch.elapsed, session]);
+    if (!sessionId_ || sessionStatus !== 'inProgress') return undefined;
+
+    const flush = () => {
+      void db.sessions.update(sessionId_, { elapsedSeconds: elapsedRef.current });
+    };
+    const interval = window.setInterval(flush, 5000);
+    // Backgrounding on iOS can discard the tab outright — persist on the way out.
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [sessionId_, sessionStatus, timerRunning]);
+
+  /**
+   * `session` lives in local state and every write puts the whole document, so a
+   * second window (installed app + a browser tab) would clobber the other's sets.
+   * Re-reading whenever this tab becomes active makes the later writer start from
+   * the newer document instead of a stale one.
+   */
+  useEffect(() => {
+    if (!sessionId_) return undefined;
+    const resync = () => {
+      if (document.visibilityState !== 'visible') return;
+      void getSession(sessionId_).then((fresh) => {
+        if (!fresh) return;
+        const mine = sessionRef.current;
+        if (mine && fresh.updatedAt <= mine.updatedAt) return;
+        sessionRef.current = fresh;
+        setSession(fresh);
+      });
+    };
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('focus', resync);
+    return () => {
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('focus', resync);
+    };
+  }, [sessionId_]);
 
   const day: WorkoutDay | undefined = useMemo(() => {
     if (!plan || !session) return undefined;
@@ -83,18 +133,37 @@ export default function WorkoutScreen() {
       ?.days.find((d) => d.id === session.dayId);
   }, [plan, session]);
 
+  // Mirrors `session` so writers never rebuild from a stale render closure — two
+  // set-taps landing in one React batch would otherwise lose the first one.
+  const sessionRef = useRef<WorkoutSession | null>(null);
+  sessionRef.current = session;
+
   const persist = useCallback(async (next: WorkoutSession) => {
+    sessionRef.current = next;
     setSession(next);
     await saveSession(next);
   }, []);
 
+  /** Applies a partial change against the LIVE session, never a render closure. */
+  const patchSession = (patch: Partial<WorkoutSession>) => {
+    const current = sessionRef.current;
+    if (!current) return;
+    void persist({ ...current, ...patch, elapsedSeconds: elapsedRef.current });
+  };
+
   const updateResult = (next: ExerciseResult) => {
-    if (!session) return;
-    const results = session.results.map((r) =>
+    const current = sessionRef.current;
+    if (!current) return;
+    const previous = current.results.find((r) => r.prescriptionId === next.prescriptionId);
+    const results = current.results.map((r) =>
       r.prescriptionId === next.prescriptionId ? next : r,
     );
-    void persist({ ...session, results, elapsedSeconds: stopwatch.elapsed });
-    if (next.completed && settings?.autoCollapseCompleted) {
+    void persist({ ...current, results, elapsedSeconds: elapsedRef.current });
+
+    // Only collapse on the false -> true transition. Notes, pain, form and
+    // substitution all arrive through this same handler, so re-running it on
+    // every change would shut the card on the first keystroke.
+    if (next.completed && !previous?.completed && settings?.autoCollapseCompleted) {
       const nextOpen = results.find((r) => !r.completed && !r.skippedReason);
       setExpanded(nextOpen?.prescriptionId ?? null);
     }
@@ -109,11 +178,16 @@ export default function WorkoutScreen() {
   };
 
   const finish = async () => {
-    if (!session) return;
+    const current = sessionRef.current;
+    // Finishing takes several async round-trips; without this guard a second tap
+    // re-enters and advances the plan cursor twice, dropping a training day.
+    if (!current || finishingRef.current) return;
+    finishingRef.current = true;
+    setFinishing(true);
     const finished: WorkoutSession = {
-      ...session,
+      ...current,
       painAfter: painDraft,
-      elapsedSeconds: stopwatch.elapsed,
+      elapsedSeconds: elapsedRef.current,
     };
     await completeSession(finished);
     await capturePRs(finished);
@@ -195,9 +269,9 @@ export default function WorkoutScreen() {
       <WarmUp
         items={session.warmUp}
         finished={warmUpDone}
-        onChange={(warmUp) => void persist({ ...session, warmUp })}
+        onChange={(warmUp) => patchSession({ warmUp })}
         onFinish={() => {
-          void persist({ ...session, warmUpCompletedAt: new Date().toISOString() });
+          patchSession({ warmUpCompletedAt: new Date().toISOString() });
           stopwatch.reset(0);
           stopwatch.start();
           if (!session.painBefore) {
@@ -252,7 +326,7 @@ export default function WorkoutScreen() {
             Session notes
             <textarea
               value={session.sessionNotes}
-              onChange={(e) => void persist({ ...session, sessionNotes: e.target.value })}
+              onChange={(e) => patchSession({ sessionNotes: e.target.value })}
               placeholder="How did the session go?"
             />
           </label>
@@ -264,8 +338,7 @@ export default function WorkoutScreen() {
               step={0.1}
               value={session.bodyweight ?? ''}
               onChange={(e) =>
-                void persist({
-                  ...session,
+                patchSession({
                   bodyweight: e.target.value === '' ? null : Number(e.target.value),
                 })
               }
@@ -354,7 +427,7 @@ export default function WorkoutScreen() {
         <button
           className="btn primary block"
           onClick={() => {
-            void persist({ ...session, painBefore: painDraft });
+            patchSession({ painBefore: painDraft });
             setPainBeforeOpen(false);
           }}
         >
@@ -368,8 +441,8 @@ export default function WorkoutScreen() {
         onClose={() => setPainAfterOpen(false)}
       >
         <PainForm value={painDraft} onChange={setPainDraft} />
-        <button className="btn primary block" onClick={() => void finish()}>
-          Save &amp; complete workout
+        <button className="btn primary block" disabled={finishing} onClick={() => void finish()}>
+          {finishing ? 'Saving…' : 'Save & complete workout'}
         </button>
       </Sheet>
     </div>

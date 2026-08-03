@@ -63,6 +63,12 @@ export async function restoreBackup(json: unknown): Promise<RestoreResult> {
       `This backup was created by a newer version of the app (schema ${data.schemaVersion}). Update the app first.`,
     );
   }
+  // Restoring an empty backup would clear every table and leave the app with no
+  // plan to render — seeding only runs once at startup, so it would sit on the
+  // loading screen until a reload.
+  if (data.plans.length === 0 || data.settings.length === 0) {
+    throw new Error('That backup contains no plan or settings — nothing was changed.');
+  }
 
   await db.transaction(
     'rw',

@@ -272,7 +272,8 @@ a {
 }
 
 .btn.small {
-  min-height: 38px;
+  /* 44px: these are the controls used mid-set with sweaty hands. */
+  min-height: 44px;
   padding: 0 12px;
   font-size: 0.83rem;
 }
@@ -569,8 +570,10 @@ label.field {
 /* Pain scale */
 .pain-scale {
   display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
-  gap: 3px;
+  /* Wraps to a second row rather than shrinking to ~20px per button on a 320px
+     screen — mis-tapping here feeds the wrong pain score into progression. */
+  grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  gap: 4px;
 }
 
 .pain-scale button {
@@ -720,6 +723,7 @@ label.field {
 }
 
 .toast {
+  pointer-events: none;
   position: fixed;
   left: 50%;
   transform: translateX(-50%);

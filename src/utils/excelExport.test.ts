@@ -196,6 +196,134 @@ describe('buildWorkbook', () => {
     expect(map.get('Push-up max (single set)')).toBe(15);
   });
 
+  /** Regressions: each of these silently lost or misattributed logged work. */
+  it('keeps every attempt when a day is trained more than once', async () => {
+    const day = plan.weeks[0]!.days[0]!;
+    const first = makeSession({
+      dayId: day.id,
+      date: '2026-08-03',
+      results: [
+        makeResult('strict-pull-up', [{ reps: 1 }], {
+          prescriptionId: day.prescriptions[1]!.id,
+        }),
+      ],
+    });
+    const redo = makeSession({
+      dayId: day.id,
+      date: '2026-08-05',
+      results: [
+        makeResult('strict-pull-up', [{ reps: 9 }], {
+          prescriptionId: day.prescriptions[1]!.id,
+        }),
+      ],
+    });
+
+    const wb = await buildWorkbook({
+      plan,
+      sessions: [first, redo],
+      records: [],
+      settings: makeSettings(),
+    });
+    const week1 = wb.getWorksheet('Week 1')!;
+    const dates = new Set<string>();
+    const repCells: string[] = [];
+    week1.eachRow((row) => {
+      if (row.getCell(1).text) dates.add(row.getCell(1).text);
+      if (row.getCell(9).text) repCells.push(row.getCell(9).text);
+    });
+    expect([...dates]).toEqual(expect.arrayContaining(['2026-08-03', '2026-08-05']));
+    expect(repCells).toContain('9');
+  });
+
+  it('exports logged sets whose prescription is no longer in the plan', async () => {
+    const day = plan.weeks[0]!.days[0]!;
+    const session = makeSession({
+      dayId: day.id,
+      results: [
+        makeResult('inverted-row', [{ reps: 7 }, { reps: 6 }], {
+          prescriptionId: 'presc-that-no-longer-exists',
+        }),
+      ],
+    });
+
+    const wb = await buildWorkbook({
+      plan,
+      sessions: [session],
+      records: [],
+      settings: makeSettings(),
+    });
+    const week1 = wb.getWorksheet('Week 1')!;
+    const rows: string[] = [];
+    week1.eachRow((row) => rows.push(`${row.getCell(3).text}|${row.getCell(9).text}`));
+    expect(rows.some((r) => r.startsWith('Unmatched') && r.includes('7 · 6'))).toBe(true);
+  });
+
+  it('labels sets by the exercise performed, not the plan’s current exercise', async () => {
+    const day = plan.weeks[0]!.days[0]!;
+    const prescription = day.prescriptions[1]!;
+    const session = makeSession({
+      dayId: day.id,
+      results: [makeResult('strict-pull-up', [{ reps: 5 }], { prescriptionId: prescription.id })],
+    });
+    // The user later edits that slot to a different exercise; the id is preserved.
+    const editedPlan = {
+      ...plan,
+      weeks: plan.weeks.map((w) =>
+        w.weekNumber !== 1
+          ? w
+          : {
+              ...w,
+              days: w.days.map((d) =>
+                d.id !== day.id
+                  ? d
+                  : {
+                      ...d,
+                      prescriptions: d.prescriptions.map((p) =>
+                        p.id === prescription.id ? { ...p, exerciseId: 'goblet-squat' } : p,
+                      ),
+                    },
+              ),
+            },
+      ),
+    };
+
+    const wb = await buildWorkbook({
+      plan: editedPlan,
+      sessions: [session],
+      records: [],
+      settings: makeSettings(),
+    });
+    const week1 = wb.getWorksheet('Week 1')!;
+    let labelForTheSet = '';
+    week1.eachRow((row) => {
+      if (row.getCell(9).text === '5') labelForTheSet = row.getCell(4).text;
+    });
+    expect(labelForTheSet).toBe('Strict Pull-Up');
+  });
+
+  it('does not throw on a plan with an unparseable start date', async () => {
+    const wb = await buildWorkbook({
+      plan: { ...plan, startDate: '', completedAt: null },
+      sessions: [],
+      records: [],
+      settings: makeSettings(),
+    });
+    const summary = wb.getWorksheet('Summary')!;
+    const map = new Map<string, unknown>();
+    summary.eachRow((row) => map.set(row.getCell(1).text, row.getCell(2).value));
+    expect(map.get('Plan end date (projected)')).toBe('—');
+  });
+
+  it('does not throw on a plan carrying duplicate week numbers', async () => {
+    const wb = await buildWorkbook({
+      plan: { ...plan, weeks: [plan.weeks[0]!, plan.weeks[0]!] },
+      sessions: [],
+      records: [],
+      settings: makeSettings(),
+    });
+    expect(wb.worksheets.map((s) => s.name)).toContain('Week 1 (2)');
+  });
+
   it('includes the final assessment when one exists', async () => {
     const wb = await buildWorkbook({
       plan,
