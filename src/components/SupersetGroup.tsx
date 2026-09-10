@@ -39,6 +39,8 @@ export function SupersetGroup({
   expandedId,
   currentId,
   onToggleExpand,
+  onFocus,
+  autoAdvance = true,
   onChange,
   onRest,
 }: {
@@ -48,11 +50,31 @@ export function SupersetGroup({
   expandedId: string | null;
   currentId: string | null;
   onToggleExpand: (prescriptionId: string) => void;
+  /** Opens one card and scrolls it into view — how a superset walks A1 -> A2. */
+  onFocus?: (prescriptionId: string) => void;
+  autoAdvance?: boolean;
   onChange: (next: ExerciseResult) => void;
   onRest: (seconds: number) => void;
 }) {
   // Which member last logged a set; drives the inline "next slot" hint.
   const [hintFor, setHintFor] = useState<string | null>(null);
+
+  /**
+   * The next slot to stand at after logging a set on `index`: the following member
+   * that still owes a working set, wrapping around for the next round. Wrapping is
+   * what makes A1 -> A2 -> A1 work, and skipping finished members is what keeps an
+   * uneven pairing (3 pull-up rounds against 5 press sets) from sending the user
+   * back to an exercise they have already finished.
+   */
+  const advanceTarget = (index: number): string | null => {
+    for (let step = 1; step <= members.length; step += 1) {
+      const candidate = members[(index + step) % members.length];
+      if (!candidate) continue;
+      const owes = candidate.result.sets.some((s) => !s.isWarmUp && !s.completed);
+      if (owes && !candidate.result.skippedReason) return candidate.prescription.id;
+    }
+    return null;
+  };
 
   const last = members[members.length - 1];
   const groupRest = last?.prescription.restSeconds ?? 0;
@@ -87,9 +109,21 @@ export function SupersetGroup({
               pairedRounds={pairedRounds}
               straightRestSeconds={groupRest}
               nextHint={next && hintFor === member.prescription.id ? memberLabel(next) : null}
-              onSetToggled={(completed) =>
-                setHintFor(completed && next ? member.prescription.id : null)
-              }
+              onSetToggled={(completed) => {
+                if (completed && autoAdvance) {
+                  const target = advanceTarget(index);
+                  // Only move if there is somewhere else to go — advancing onto the
+                  // card the user already stands on would just scroll under them.
+                  if (target && target !== member.prescription.id) {
+                    onFocus?.(target);
+                    return;
+                  }
+                }
+                // The written hint only earns its space when the app is NOT going to
+                // walk the user across itself: it lives inside this card's body, so
+                // an auto-advance would collapse it out of sight the moment it appeared.
+                setHintFor(completed && next && !autoAdvance ? member.prescription.id : null);
+              }}
               onToggleExpand={() => onToggleExpand(member.prescription.id)}
               onChange={onChange}
               onRest={onRest}

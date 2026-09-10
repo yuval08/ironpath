@@ -1009,6 +1009,7 @@ export function buildWorkoutDay(template: DayTemplate, weekNumber: number): Work
   };
 }
 
+// This block prescribes no external load, so the unit makes no difference to it.
 export function buildWeeks(): WeekPlan[] {
   return WEEK_META.map((meta, index) => {
     const weekNumber = index + 1;

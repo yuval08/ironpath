@@ -1,4 +1,4 @@
-import type { DayType, ProgramId, WeekPlan } from '@/types';
+import type { DayType, ProgramId, WeightUnit, WeekPlan } from '@/types';
 import type { WarmUpItem } from './timing';
 import { movementResilienceProgram } from './movementResilience';
 import { hypertrophy14Program } from './hypertrophy14';
@@ -9,6 +9,10 @@ import { hypertrophy14Program } from './hypertrophy14';
  * program — its warm-up, its day labels, how many weeks it has — resolves it
  * here rather than importing one program's module directly.
  */
+export interface BuildOptions {
+  weightUnit?: WeightUnit;
+}
+
 export interface ProgramDefinition {
   id: ProgramId;
   name: string;
@@ -19,7 +23,11 @@ export interface ProgramDefinition {
   /** Empty when the general warm-up is done outside the app. */
   warmUp: WarmUpItem[];
   dayLabels: Record<DayType, string>;
-  buildWeeks: () => WeekPlan[];
+  /**
+   * Weight steps are baked into the plan at creation, so the unit the user trains
+   * in has to be known here — nothing converts stored weights later.
+   */
+  buildWeeks: (options?: BuildOptions) => WeekPlan[];
 }
 
 export const PROGRAMS: Record<ProgramId, ProgramDefinition> = {

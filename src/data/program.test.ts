@@ -14,11 +14,15 @@ import {
   buildWeeks as buildResilienceWeeks,
 } from './programs/movementResilience';
 import {
-  DAY_TEMPLATES as HYPERTROPHY_TEMPLATES,
+  dayTemplates as hypertrophyTemplates,
+  buildWeeks as buildHypertrophyWeeks,
   HYPERTROPHY_TIMING,
 } from './programs/hypertrophy14';
 import { EXERCISE_BY_ID } from './exercises';
 import { plannedRepsLabel } from '@/db/repository';
+
+/** Any step table works for shape assertions; the values are unit-specific. */
+const STEP_SAMPLE = { dumbbell: 5, cable: 5, stack: 10, legPress: 25 };
 
 const weeks = buildResilienceWeeks();
 const hypertrophyWeeks = PROGRAMS['hypertrophy-14wk'].buildWeeks();
@@ -105,9 +109,9 @@ describe('program registry', () => {
     const hypertrophy = idsOf('hypertrophy-14wk');
 
     expect([...hypertrophy.days].filter((id) => resilience.days.has(id))).toEqual([]);
-    expect(
-      [...hypertrophy.prescriptions].filter((id) => resilience.prescriptions.has(id)),
-    ).toEqual([]);
+    expect([...hypertrophy.prescriptions].filter((id) => resilience.prescriptions.has(id))).toEqual(
+      [],
+    );
   });
 
   it('never programs a deadlift variation in any program', () => {
@@ -316,14 +320,9 @@ describe('hypertrophy 14: week structure', () => {
   });
 
   it('runs four weekday-mapped days built from one canonical template', () => {
-    expect(HYPERTROPHY_TEMPLATES).toHaveLength(4);
+    expect(hypertrophyTemplates(STEP_SAMPLE)).toHaveLength(4);
     for (const week of hypertrophyWeeks) {
-      expect(week.days.map((d) => d.weekday)).toEqual([
-        'monday',
-        'tuesday',
-        'thursday',
-        'friday',
-      ]);
+      expect(week.days.map((d) => d.weekday)).toEqual(['monday', 'tuesday', 'thursday', 'friday']);
       expect(week.days.map((d) => d.dayType)).toEqual(['upperA', 'lowerA', 'upperB', 'lowerB']);
     }
   });
@@ -362,7 +361,10 @@ describe('hypertrophy 14: phase scaling', () => {
   it('caps reload week 1 and the deload at 2 sets of everything', () => {
     for (const week of [reload1, deload]) {
       const over = allPrescriptions([week]).filter((p) => p.sets > 2);
-      expect(over.map((p) => p.exerciseId), week.title).toEqual([]);
+      expect(
+        over.map((p) => p.exerciseId),
+        week.title,
+      ).toEqual([]);
     }
   });
 
@@ -509,11 +511,7 @@ describe('hypertrophy 14: weekly volume', () => {
   const MUSCLES: Record<string, string[]> = {
     chest: ['incline-dumbbell-press', 'flat-dumbbell-press'],
     // Scapular pull-ups are prep, not back volume, so they are excluded.
-    back: [
-      'band-assisted-pull-up',
-      'chest-supported-row',
-      'neutral-grip-lat-pulldown',
-    ],
+    back: ['band-assisted-pull-up', 'chest-supported-row', 'neutral-grip-lat-pulldown'],
     lateralDelts: ['cable-lateral-raise'],
     quads: ['smith-machine-squat', 'leg-extension', 'leg-press', 'supported-split-squat'],
     hamstrings: ['seated-leg-curl'],
@@ -700,5 +698,33 @@ describe('push-up variations', () => {
     expect(PUSH_UP_EXERCISE_IDS).toContain('standard-push-up');
     expect(PUSH_UP_EXERCISE_IDS).toContain('decline-push-up');
     expect(PUSH_UP_EXERCISE_IDS).toContain('pike-push-up');
+  });
+});
+
+describe('load steps follow the unit the plan was created in', () => {
+  /**
+   * `weightUnit` only relabels — nothing converts stored weights — so a plan built
+   * in lb must carry real lb jumps. Suggesting +2 on a dumbbell press to someone
+   * training in pounds is a step that does not exist on the rack.
+   */
+  it('uses real plate jumps in each unit', () => {
+    const inLb = buildHypertrophyWeeks({ weightUnit: 'lb' });
+    const inKg = buildHypertrophyWeeks({ weightUnit: 'kg' });
+
+    const stepFor = (weeks: ReturnType<typeof buildHypertrophyWeeks>, exerciseId: string) =>
+      weeks[0]?.days.flatMap((d) => d.prescriptions).find((p) => p.exerciseId === exerciseId)
+        ?.weightIncrement;
+
+    expect(stepFor(inLb, 'incline-dumbbell-press')).toBe(5);
+    expect(stepFor(inKg, 'incline-dumbbell-press')).toBe(2);
+    expect(stepFor(inLb, 'seated-leg-curl')).toBe(10);
+    expect(stepFor(inKg, 'seated-leg-curl')).toBe(5);
+  });
+
+  it('defaults to lb, the unit the app ships in', () => {
+    const stepped = buildHypertrophyWeeks()[0]
+      ?.days.flatMap((d) => d.prescriptions)
+      .find((p) => p.exerciseId === 'incline-dumbbell-press');
+    expect(stepped?.weightIncrement).toBe(5);
   });
 });

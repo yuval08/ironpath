@@ -55,7 +55,7 @@ describe('seeding', () => {
     expect(plan.programId).toBe('hypertrophy-14wk');
     expect(plan.weeks).toHaveLength(15);
     expect(plan.archived).toBe(false);
-    expect(settings.weightUnit).toBe('kg');
+    expect(settings.weightUnit).toBe('lb');
     expect(settings.activePlanId).toBe(plan.id);
     expect(settings.bandLabels).toEqual(DEFAULT_BAND_LABELS);
   });

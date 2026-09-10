@@ -1,8 +1,16 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 
-/** Bottom sheet — thumb-friendly modal for one-handed use. */
+/**
+ * Bottom sheet — thumb-friendly modal for one-handed use.
+ *
+ * Rendered through a portal on purpose. A sheet mounted inside the screen tree sits
+ * in `.app-main`'s stacking context, so its z-index never competes with the fixed
+ * `.sticky-bar` and `.bottom-nav`: they paint over the bottom of the sheet and win
+ * the hit test, leaving whatever control lands there visible but untappable.
+ */
 export function Sheet({
   open,
   title,
@@ -25,7 +33,7 @@ export function Sheet({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="sheet-backdrop"
       role="dialog"
@@ -44,7 +52,8 @@ export function Sheet({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

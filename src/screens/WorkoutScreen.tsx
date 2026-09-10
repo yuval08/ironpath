@@ -191,6 +191,22 @@ export default function WorkoutScreen() {
     }
   };
 
+  /**
+   * Opens one exercise and brings it under the thumb. Used both by the sticky
+   * "Next exercise" button and by a superset walking A1 -> A2, so the two cannot
+   * drift apart.
+   */
+  const focusExercise = useCallback((prescriptionId: string) => {
+    setExpanded(prescriptionId);
+    // The card is already mounted; wait a frame so the freshly expanded body is
+    // laid out before scrolling, otherwise it lands off-centre.
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`ex-${prescriptionId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, []);
+
   const startFresh = async () => {
     if (!plan || !settings) return;
     const target = currentDay(plan);
@@ -351,6 +367,8 @@ export default function WorkoutScreen() {
                     expandedId={expanded}
                     currentId={nextExercise?.prescriptionId ?? null}
                     onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
+                    onFocus={focusExercise}
+                    autoAdvance={settings.autoCollapseCompleted}
                     onChange={updateResult}
                     onRest={(seconds) => rest.start(seconds)}
                   />
@@ -422,12 +440,7 @@ export default function WorkoutScreen() {
           <button
             className="btn primary small"
             style={{ flex: 1 }}
-            onClick={() => {
-              setExpanded(nextExercise.prescriptionId);
-              document
-                .getElementById(`ex-${nextExercise.prescriptionId}`)
-                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }}
+            onClick={() => focusExercise(nextExercise.prescriptionId)}
           >
             <ChevronDown size={16} /> Next exercise
           </button>

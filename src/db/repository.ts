@@ -9,6 +9,7 @@ export { totalSessionsFor } from '@/utils/stats';
 import { DEFAULT_BAND_LABELS, SCHEMA_VERSION } from '@/types';
 import type {
   ExerciseResult,
+  WeightUnit,
   FinalAssessment,
   PersonalRecord,
   PersonalRecordKind,
@@ -49,7 +50,7 @@ export function defaultStartDate(from = new Date()): string {
 function defaultSettings(): UserSettings {
   return base(SETTINGS_ID, {
     userName: '',
-    weightUnit: 'kg' as const,
+    weightUnit: 'lb' as const,
     theme: 'system' as const,
     restDefaultSeconds: 60,
     vibrateOnRestEnd: true,
@@ -69,15 +70,19 @@ function defaultSettings(): UserSettings {
 export async function createPlanFromProgram(
   programId: ProgramId,
   startDate = defaultStartDate(),
+  weightUnit?: WeightUnit,
 ): Promise<WorkoutPlan> {
   const program = programFor(programId);
+  // Load steps are baked in at creation and never converted afterwards, so the
+  // plan has to be built in the unit the user actually trains in.
+  const unit = weightUnit ?? (await getSettings())?.weightUnit ?? 'lb';
   const year = parseIsoDate(startDate).getFullYear();
   const plan = base(newId('plan'), {
     name: program.name,
     startDate,
     currentWeek: 1,
     currentDayIndex: 0,
-    weeks: program.buildWeeks(),
+    weeks: program.buildWeeks({ weightUnit: unit }),
     // The travel window is part of the resilience block's own history; a plan
     // started from any other program begins with a clean calendar.
     pausePeriods:

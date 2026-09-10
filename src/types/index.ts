@@ -351,7 +351,7 @@ export type ResumeChoice = z.infer<typeof resumeChoiceSchema>;
 
 export const userSettingsSchema = entityBase.extend({
   userName: z.string().default(''),
-  weightUnit: weightUnitSchema.default('kg'),
+  weightUnit: weightUnitSchema.default('lb'),
   theme: themeSchema.default('system'),
   restDefaultSeconds: z.number().int().default(60),
   vibrateOnRestEnd: z.boolean().default(true),

@@ -145,16 +145,26 @@ test.describe('mid-session robustness', () => {
 
     // Re-open the finished exercise and type — this used to slam the card shut
     // on the first keystroke because auto-collapse re-ran on every change.
-    await page.getByRole('button', { name: /Scapular Pull-Up/ }).click();
-    const notes = page.getByPlaceholder('Cues, how it felt, anything to remember').first();
+    const card = page.locator('.exercise-card', { hasText: 'Scapular Pull-Up' }).first();
+    await card.getByRole('button', { name: /Scapular Pull-Up/ }).click();
+    await card.getByRole('button', { name: /More options/ }).click();
+    const notes = page.getByPlaceholder('Cues, how it felt, anything to remember');
     await notes.fill('shoulders felt good');
     await expect(notes).toHaveValue('shoulders felt good');
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+
+    // The card advertises that something is recorded behind the sheet.
+    await expect(card.locator('.options-btn.has-values')).toBeVisible();
 
     await page.reload();
     await page.getByRole('button', { name: /Scapular Pull-Up/ }).click();
-    await expect(
-      page.getByPlaceholder('Cues, how it felt, anything to remember').first(),
-    ).toHaveValue('shoulders felt good');
+    await page
+      .getByRole('button', { name: /More options/ })
+      .first()
+      .click();
+    await expect(page.getByPlaceholder('Cues, how it felt, anything to remember')).toHaveValue(
+      'shoulders felt good',
+    );
   });
 
   test('does not skip a training day when Finish is double-tapped', async ({ page }) => {
@@ -230,17 +240,36 @@ test.describe('Ironpath — hypertrophy block', () => {
     const skipRest = page.getByRole('button', { name: 'Skip rest' });
     if (await skipRest.isVisible().catch(() => false)) await skipRest.click();
 
-    // Completing an A1 set must NOT open the rest overlay — it points at A2 instead.
+    // Completing an A1 set must NOT open the rest overlay — the user goes to A2.
     const a1 = page.locator('.exercise-card', { hasText: 'Band-Assisted Pull-Up' }).first();
+    const a2 = page.locator('.exercise-card', { hasText: 'Incline Dumbbell Press' }).first();
     await a1
       .getByRole('button', { name: /Mark set/ })
       .first()
       .click();
     await expect(page.locator('.rest-overlay')).toBeHidden();
-    // The hint takes the place of the timer and names the exercise to move to.
-    const hint = page.locator('.next-hint');
-    await expect(hint).toBeVisible();
-    await expect(hint).toContainText('Incline Dumbbell Press');
+
+    // A1 collapses and A2 opens — the app walks the pairing rather than describing it.
+    await expect(a1.getByRole('button', { name: /Band-Assisted Pull-Up/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    await expect(a2.getByRole('button', { name: /Incline Dumbbell Press/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+
+    // Logging A2 comes back to A1 for the next round.
+    await a2
+      .getByRole('button', { name: /Mark set/ })
+      .first()
+      .click();
+    const skip = page.getByRole('button', { name: 'Skip rest' });
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await expect(a1.getByRole('button', { name: /Band-Assisted Pull-Up/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 
   test('records RIR on a loaded exercise', async ({ page }) => {

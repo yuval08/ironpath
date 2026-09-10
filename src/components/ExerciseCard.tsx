@@ -5,18 +5,14 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Info,
-  Replace,
-  SkipForward,
+  Plus,
   Timer,
 } from 'lucide-react';
 import { exerciseName, getExercise } from '@/data/exercises';
-import { substitutionsFor } from '@/data/substitutions';
 import { painLevel } from '@/utils/stats';
 import { SetRow } from './SetRow';
 import type { EffortField } from './SetRow';
-import { VideoLink } from './VideoLink';
-import { PainScale } from './PainScale';
+import { ExerciseOptionsSheet, hasExerciseOptions } from './ExerciseOptionsSheet';
 import { HistoryLine } from './HistoryLine';
 import { ProgressionBanner } from './ProgressionBanner';
 import { BandPicker } from './BandPicker';
@@ -53,9 +49,6 @@ interface Props {
   onSetToggled?: (completed: boolean) => void;
 }
 
-/** Sentinel option value: an empty <option value> writes undefined back into the result. */
-const AS_PROGRAMMED = 'as-programmed';
-
 /** Hypertrophy work is prescribed in RIR; the resilience block still logs RPE. */
 function effortFor(prescription: ExercisePrescription): EffortField {
   const { progressionType, targetRirLow, targetRirHigh } = prescription;
@@ -80,13 +73,11 @@ export function ExerciseCard({
   nextHint = null,
   onSetToggled,
 }: Props) {
-  const [showInstructions, setShowInstructions] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const activeId = result.substitutionExerciseId ?? result.exerciseId;
   const def = getExercise(activeId);
-  const subs = [
-    ...new Set([...substitutionsFor(result.exerciseId), ...prescription.substitutionIds]),
-  ];
   const painFlag = painLevel(result.painDuring) === 'red';
+  const optionsSet = hasExerciseOptions(result);
   const effort = effortFor(prescription);
 
   // Ramp sets are logged for context only: they never count toward the x/y
@@ -271,7 +262,12 @@ export function ExerciseCard({
             </div>
           )}
 
-          <div className="row tight" style={{ marginTop: 8 }}>
+          {/*
+            One line, because everything here competes with the set inputs for the
+            only screen space that matters mid-set. Technique, pain, form, notes and
+            skipping live behind the + sheet.
+          */}
+          <div className="exercise-actions">
             {prescription.restSeconds > 0 && (
               <button className="btn small" onClick={() => onRest(prescription.restSeconds)}>
                 <Timer size={14} /> Rest {prescription.restSeconds}s
@@ -281,49 +277,13 @@ export function ExerciseCard({
               <Check size={14} /> Complete all
             </button>
             <button
-              className="btn small ghost"
-              onClick={() => setShowInstructions((s) => !s)}
-              aria-expanded={showInstructions}
+              className={`btn small ghost icon options-btn ${optionsSet ? 'has-values' : ''}`}
+              aria-label="More options — technique, pain, form, notes"
+              onClick={() => setOptionsOpen(true)}
             >
-              <Info size={14} /> How to
+              <Plus size={16} />
             </button>
           </div>
-
-          <div style={{ marginTop: 8 }}>
-            <VideoLink
-              exerciseId={activeId}
-              compact
-              onViewed={() => onChange({ ...result, videoViewed: true })}
-            />
-          </div>
-
-          {showInstructions && def && (
-            <div className="card" style={{ marginTop: 10, boxShadow: 'none' }}>
-              <ol style={{ margin: '0 0 8px', paddingLeft: 18, fontSize: '0.85rem' }}>
-                {def.instructions.map((s) => (
-                  <li key={s}>{s}</li>
-                ))}
-              </ol>
-              {def.commonMistakes.length > 0 && (
-                <p className="muted tiny" style={{ margin: 0 }}>
-                  <strong>Avoid:</strong> {def.commonMistakes.join(' · ')}
-                </p>
-              )}
-              {def.safetyNotes.length > 0 && (
-                <p className="muted tiny" style={{ margin: '4px 0 0' }}>
-                  <strong>Safety:</strong> {def.safetyNotes.join(' ')}
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="divider" />
-
-          <PainScale
-            label="Pain during this exercise"
-            value={result.painDuring}
-            onChange={(v) => onChange({ ...result, painDuring: v })}
-          />
 
           {painFlag && (
             <div className="banner danger">
@@ -331,74 +291,18 @@ export function ExerciseCard({
                 <AlertTriangle size={15} />
                 <strong>Pain at {result.painDuring}/10</strong>
               </div>
-              Stop this exercise and switch to the programmed substitution below. This app does not
+              Stop this exercise and switch to a substitution from the + menu. This app does not
               diagnose the cause.
             </div>
           )}
 
-          <div className="row tight" style={{ marginBottom: 10 }}>
-            <span className="muted tiny">Form:</span>
-            <button
-              className={`btn small ${result.formGood === true ? 'primary' : 'ghost'}`}
-              onClick={() => onChange({ ...result, formGood: true })}
-            >
-              Clean
-            </button>
-            <button
-              className={`btn small ${result.formGood === false ? 'primary' : 'ghost'}`}
-              onClick={() => onChange({ ...result, formGood: false })}
-            >
-              Broke down
-            </button>
-          </div>
-
-          {subs.length > 0 && (
-            <label className="field" style={{ marginBottom: 10 }}>
-              <span className="row tight">
-                <Replace size={13} /> Substitution
-              </span>
-              <select
-                value={result.substitutionExerciseId ?? AS_PROGRAMMED}
-                onChange={(e) =>
-                  onChange({
-                    ...result,
-                    substitutionExerciseId:
-                      e.target.value === AS_PROGRAMMED ? null : e.target.value,
-                  })
-                }
-              >
-                <option value={AS_PROGRAMMED}>None — as programmed</option>
-                {subs.map((id) => (
-                  <option key={id} value={id}>
-                    {exerciseName(id)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <label className="field" style={{ marginBottom: 10 }}>
-            Notes
-            <textarea
-              value={result.notes}
-              placeholder="Cues, how it felt, anything to remember"
-              onChange={(e) => onChange({ ...result, notes: e.target.value })}
-            />
-          </label>
-
-          <button
-            className="btn small ghost block"
-            onClick={() => {
-              if (result.skippedReason) {
-                onChange({ ...result, skippedReason: null });
-                return;
-              }
-              const reason = window.prompt('Why are you skipping this exercise?', 'Pain');
-              if (reason != null) onChange({ ...result, skippedReason: reason || 'Skipped' });
-            }}
-          >
-            <SkipForward size={14} /> {result.skippedReason ? 'Un-skip exercise' : 'Skip exercise'}
-          </button>
+          <ExerciseOptionsSheet
+            open={optionsOpen}
+            onClose={() => setOptionsOpen(false)}
+            prescription={prescription}
+            result={result}
+            onChange={onChange}
+          />
         </div>
       )}
     </div>

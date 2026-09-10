@@ -117,3 +117,41 @@
 .band-picker {
   margin-bottom: 10px;
 }
+
+/* ---------------------------------------------------------------- actions */
+/*
+ * One action line under the sets. Technique, pain, form, notes and skipping moved
+ * into the + sheet: inline they pushed the set inputs — the only thing touched
+ * mid-set — below the fold on a phone.
+ */
+.exercise-body .exercise-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.exercise-body .exercise-actions .btn {
+  min-height: 40px;
+}
+
+.exercise-body .exercise-actions .options-btn {
+  margin-left: auto;
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* A dot so anything recorded behind the sheet is not invisible from the card. */
+.exercise-body .exercise-actions .options-btn.has-values::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}

@@ -74,7 +74,8 @@ export const progressionTypeSchema = z.enum(['double', 'bandAssist', 'reps', 'ti
 - `progressionType: progressionTypeSchema.default('fixed')`
 - `targetRirLow: z.number().nullable().default(null)`
 - `targetRirHigh: z.number().nullable().default(null)`
-- `weightIncrement: z.number().nullable().default(null)` — kg step suggested on progression
+- `weightIncrement: z.number().nullable().default(null)` — load step suggested on progression,
+  in the unit the plan was built in (the app defaults to lb; nothing converts stored weights)
 - `rampSets: z.number().int().default(0)` — optional non-working ramp sets
 
 **SetResult** adds:
