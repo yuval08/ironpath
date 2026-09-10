@@ -1,20 +1,24 @@
+import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { Check, TrendingUp, X } from 'lucide-react';
 import { useAppData } from '@/state/AppDataProvider';
 import { BarChart, ChartCard, LineChart, type Point } from '@/components/Charts';
-import { setSuggestionStatus } from '@/db/repository';
+import { setSuggestionStatus, totalSessionsFor } from '@/db/repository';
 import { useToast } from '@/state/ToastProvider';
 import {
-  averageRpe,
   completedSessions,
   completionPercent,
   performedExerciseId,
   pushUpTotalForWeek,
   sessionVolume,
   setReps,
-  TOTAL_SESSIONS,
+  workingSetsOf,
 } from '@/utils/stats';
-import type { WorkoutSession } from '@/types';
+import { ExerciseProgressCard } from './progress/ExerciseProgressCard';
+import { BandLadderCard } from './progress/BandLadderCard';
+import { BodyweightCard, DurationTrendCard, RirTrendCard } from './progress/TrendCards';
+import { PainFlagsCard } from './progress/PainFlagsCard';
+import type { SetResult, WorkoutSession } from '@/types';
 
 function shortLabel(session: WorkoutSession): string {
   return format(new Date(session.date), 'd/M');
@@ -23,60 +27,45 @@ function shortLabel(session: WorkoutSession): string {
 function bestSetSeries(
   sessions: WorkoutSession[],
   exerciseId: string,
-  pick: (set: WorkoutSession['results'][number]['sets'][number]) => number,
+  pick: (set: SetResult) => number,
 ): Point[] {
   const points: Point[] = [];
   for (const session of sessions) {
     const value = session.results
       .filter((r) => performedExerciseId(r) === exerciseId && r.skippedReason == null)
-      .flatMap((r) => r.sets.filter((s) => s.completed))
+      // Ramp sets are logged for context only — a heavy single would win every chart.
+      .flatMap((r) => workingSetsOf(r).filter((s) => s.completed))
       .reduce((max, s) => Math.max(max, pick(s) || 0), 0);
     if (value > 0) points.push({ label: shortLabel(session), value });
   }
   return points;
 }
 
-function painSeries(
-  sessions: WorkoutSession[],
-  keys: ('leftKnee' | 'rightKnee' | 'leftShoulder' | 'rightShoulder' | 'lowerBack')[],
-): Point[] {
-  return sessions
-    .filter((s) => s.painAfter)
-    .map((s) => {
-      const entry = s.painAfter!;
-      const values = keys.map((k) => entry[k]);
-      return {
-        label: shortLabel(s),
-        value: Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10,
-      };
-    });
-}
-
 export default function ProgressScreen() {
-  const { sessions, suggestions, settings } = useAppData();
+  const { plan, sessions, suggestions, settings } = useAppData();
   const { toast } = useToast();
-  const done = completedSessions(sessions);
-  const pending = suggestions.filter((s) => s.status === 'pending');
 
-  const weeklyVolumePoints: Point[] = [1, 2, 3, 4].map((week) => ({
+  // Charts describe the plan you are training. `sessions` is unfiltered upstream
+  // because export needs every plan's history.
+  const planSessions = useMemo(
+    () => sessions.filter((s) => s.planId === plan?.id),
+    [sessions, plan?.id],
+  );
+
+  if (!plan || !settings) return null;
+
+  const done = completedSessions(planSessions);
+  const pending = suggestions.filter((s) => s.status === 'pending');
+  const total = totalSessionsFor(plan);
+  const weekNumbers = plan.weeks.map((w) => w.weekNumber);
+  const isResilience = plan.programId === 'movement-resilience';
+
+  const weeklyVolumePoints: Point[] = weekNumbers.map((week) => ({
     label: `W${week}`,
     value: Math.round(
       done.filter((s) => s.weekNumber === week).reduce((sum, s) => sum + sessionVolume(s), 0),
     ),
   }));
-
-  const pushUpPoints: Point[] = [1, 2, 3, 4].map((week) => ({
-    label: `W${week}`,
-    value: pushUpTotalForWeek(done, week),
-  }));
-
-  const rpePoints: Point[] = done
-    .map((s) => ({ label: shortLabel(s), value: averageRpe(s) ?? 0 }))
-    .filter((p) => p.value > 0);
-
-  const bodyweightPoints: Point[] = done
-    .filter((s) => s.bodyweight != null)
-    .map((s) => ({ label: shortLabel(s), value: s.bodyweight as number }));
 
   return (
     <div>
@@ -124,15 +113,15 @@ export default function ProgressScreen() {
         </div>
       )}
 
-      <ChartCard
-        title="Workout completion"
-        subtitle={`${done.length} of ${TOTAL_SESSIONS} sessions`}
-      >
+      <ChartCard title="Workout completion" subtitle={`${done.length} of ${total} sessions`}>
         <div className="progress-track" style={{ marginBottom: 8 }}>
-          <div className="progress-fill" style={{ width: `${completionPercent(sessions)}%` }} />
+          <div
+            className="progress-fill"
+            style={{ width: `${completionPercent(planSessions, total)}%` }}
+          />
         </div>
         <BarChart
-          points={[1, 2, 3, 4].map((week) => ({
+          points={weekNumbers.map((week) => ({
             label: `W${week}`,
             value: done.filter((s) => s.weekNumber === week).length,
           }))}
@@ -140,65 +129,74 @@ export default function ProgressScreen() {
         />
       </ChartCard>
 
-      <ChartCard title="Pull-up maximum" subtitle="Best set per session">
-        <LineChart points={bestSetSeries(done, 'strict-pull-up', setReps)} suffix=" reps" />
-      </ChartCard>
+      <ExerciseProgressCard
+        plan={plan}
+        sessions={planSessions}
+        unit={settings.weightUnit}
+        bandLabels={settings.bandLabels}
+      />
 
-      <ChartCard title="Chin-up maximum" subtitle="Best set per session">
-        <LineChart points={bestSetSeries(done, 'chin-up', setReps)} suffix=" reps" />
-      </ChartCard>
+      <BandLadderCard sessions={planSessions} bandLabels={settings.bandLabels} />
 
-      <ChartCard title="Push-up volume" subtitle="Total quality reps per week">
-        <BarChart points={pushUpPoints} />
-      </ChartCard>
+      <RirTrendCard sessions={planSessions} />
 
-      <ChartCard title="Dead-hang duration" subtitle="Best hang per session">
-        <LineChart
-          points={bestSetSeries(done, 'dead-hang', (s) => s.durationSeconds ?? 0)}
-          suffix="s"
-        />
-      </ChartCard>
+      <DurationTrendCard sessions={planSessions} />
 
-      <ChartCard title="Backward treadmill duration" subtitle="Minutes per session">
-        <LineChart
-          points={bestSetSeries(done, 'backward-treadmill-walk', (s) => s.treadmillMinutes ?? 0)}
-          suffix=" min"
-        />
-      </ChartCard>
-
-      <ChartCard title="Backward treadmill speed" subtitle="mph per session">
-        <LineChart
-          points={bestSetSeries(done, 'backward-treadmill-walk', (s) => s.treadmillSpeed ?? 0)}
-          suffix=" mph"
-        />
-      </ChartCard>
-
-      <ChartCard title="Knee pain trend" subtitle="Average of both knees, after each session">
-        <LineChart points={painSeries(done, ['leftKnee', 'rightKnee'])} max={10} />
-      </ChartCard>
-
-      <ChartCard title="Shoulder pain trend" subtitle="Average of both shoulders">
-        <LineChart points={painSeries(done, ['leftShoulder', 'rightShoulder'])} max={10} />
-      </ChartCard>
-
-      <ChartCard title="Lower-back pain trend">
-        <LineChart points={painSeries(done, ['lowerBack'])} max={10} />
-      </ChartCard>
-
-      <ChartCard title="Bodyweight" subtitle={settings?.weightUnit ?? 'kg'}>
-        <LineChart
-          points={bodyweightPoints}
-          emptyMessage="Log bodyweight during a session to chart it."
-        />
-      </ChartCard>
-
-      <ChartCard title="Average RPE" subtitle="Per session">
-        <LineChart points={rpePoints} max={10} />
-      </ChartCard>
-
-      <ChartCard title="Weekly volume" subtitle="Weight × reps across completed sets">
+      <ChartCard title="Weekly volume" subtitle="Weight × reps across completed working sets">
         <BarChart points={weeklyVolumePoints} />
       </ChartCard>
+
+      {/* Only the resilience block trains these, and only it prescribes a weekly
+          push-up target — charting them for a hypertrophy plan is empty axes. */}
+      {isResilience && (
+        <>
+          <ChartCard title="Pull-up maximum" subtitle="Best set per session">
+            <LineChart points={bestSetSeries(done, 'strict-pull-up', setReps)} suffix=" reps" />
+          </ChartCard>
+
+          <ChartCard title="Chin-up maximum" subtitle="Best set per session">
+            <LineChart points={bestSetSeries(done, 'chin-up', setReps)} suffix=" reps" />
+          </ChartCard>
+
+          <ChartCard title="Push-up volume" subtitle="Total quality reps per week">
+            <BarChart
+              points={weekNumbers.map((week) => ({
+                label: `W${week}`,
+                value: pushUpTotalForWeek(done, week),
+              }))}
+            />
+          </ChartCard>
+
+          <ChartCard title="Dead-hang duration" subtitle="Best hang per session">
+            <LineChart
+              points={bestSetSeries(done, 'dead-hang', (s) => s.durationSeconds ?? 0)}
+              suffix="s"
+            />
+          </ChartCard>
+
+          <ChartCard title="Backward treadmill duration" subtitle="Minutes per session">
+            <LineChart
+              points={bestSetSeries(
+                done,
+                'backward-treadmill-walk',
+                (s) => s.treadmillMinutes ?? 0,
+              )}
+              suffix=" min"
+            />
+          </ChartCard>
+
+          <ChartCard title="Backward treadmill speed" subtitle="mph per session">
+            <LineChart
+              points={bestSetSeries(done, 'backward-treadmill-walk', (s) => s.treadmillSpeed ?? 0)}
+              suffix=" mph"
+            />
+          </ChartCard>
+        </>
+      )}
+
+      <PainFlagsCard sessions={done} />
+
+      <BodyweightCard sessions={planSessions} unit={settings.weightUnit} />
     </div>
   );
 }

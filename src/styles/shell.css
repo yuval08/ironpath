@@ -1,0 +1,241 @@
+/* ------------------------------------------------------------------ */
+/* App shell styles — plan switcher, dashboard, progress, settings.    */
+/* Owned by the shell agent. Imported from index.css.                  */
+/*                                                                     */
+/* index.css imports this file at its very top, so every rule there    */
+/* wins ties. Anything below that has to beat a base rule is           */
+/* deliberately qualified rather than marked !important.               */
+/* ------------------------------------------------------------------ */
+
+/* Phase badges — Reload / Hypertrophy W7 / Deload.
+   They reuse the .pill box so they inherit its size and tap padding. */
+.pill.phase-reload {
+  background: var(--yellow-bg);
+  color: var(--yellow);
+}
+.pill.phase-hypertrophy {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.pill.phase-deload {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+.pill.phase-base {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------------ */
+/* Plan switcher                                                       */
+/* ------------------------------------------------------------------ */
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 11px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.plan-row:last-of-type {
+  border-bottom: 0;
+}
+
+.plan-row.active {
+  background: var(--surface-2);
+}
+
+.plan-row .plan-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 13px 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-actions:last-child {
+  border-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dashboard                                                           */
+/* ------------------------------------------------------------------ */
+
+/* Duration against the 45-55 min target. The band is drawn as a static
+   overlay so the reading is judged against it without a second chart. */
+.duration-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.duration-bar .target-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--green-bg);
+}
+
+.duration-bar .marker {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 0.86rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.kv:last-child {
+  border-bottom: 0;
+}
+
+.kv .k {
+  color: var(--text-dim);
+}
+
+.kv .v {
+  font-weight: 700;
+  text-align: right;
+}
+
+/* ------------------------------------------------------------------ */
+/* Progress                                                            */
+/* ------------------------------------------------------------------ */
+
+/* Band-assistance ladder: Heavy -> Medium -> Light -> ... */
+.band-ladder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.band-ladder .rung {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.band-ladder .rung.reached {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.band-ladder .rung.current {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.band-ladder .arrow {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+.exercise-picker {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.exercise-picker label.field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A joint whose recent scores sit materially above its own trailing
+   average. Descriptive only — the copy never diagnoses anything. */
+.pain-flag {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--yellow-bg);
+  color: var(--yellow);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings — band label editor                                        */
+/* ------------------------------------------------------------------ */
+
+.band-label-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.band-label-row .band-key {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+/* 360px: the two-column grid stops fitting a readable input. */
+@media (max-width: 380px) {
+  .band-label-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Week / day list                                                     */
+/* ------------------------------------------------------------------ */
+
+.week-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.superset-slot {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 5px;
+  margin-right: 6px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-align: center;
+}

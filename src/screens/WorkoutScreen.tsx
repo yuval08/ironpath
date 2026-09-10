@@ -5,6 +5,8 @@ import { useAppData } from '@/state/AppDataProvider';
 import { useToast } from '@/state/ToastProvider';
 import { useRestTimer, useStopwatch, REST_PRESETS } from '@/hooks/useTimers';
 import { ExerciseCard } from '@/components/ExerciseCard';
+import { SupersetGroup } from '@/components/SupersetGroup';
+import type { SupersetMember } from '@/components/SupersetGroup';
 import { WarmUp } from '@/components/WarmUp';
 import { FollowAlongVideo } from '@/components/FollowAlongVideo';
 import { EMPTY_PAIN, PainForm } from '@/components/PainScale';
@@ -21,9 +23,18 @@ import {
   saveSuggestions,
 } from '@/db/repository';
 import { detectProgressions } from '@/utils/progression';
-import { formatDuration, sessionProgress, setReps } from '@/utils/stats';
+import { programFor } from '@/data/programs';
+import { evaluateDoubleProgression, lastPerformance } from '@/utils/doubleProgression';
+import type { BandLabels } from '@/utils/doubleProgression';
+import { formatDuration, performedExerciseId, sessionProgress, setReps } from '@/utils/stats';
 import { db } from '@/db/db';
-import type { ExerciseResult, PainEntry, WorkoutDay, WorkoutSession } from '@/types';
+import type {
+  ExercisePrescription,
+  ExerciseResult,
+  PainEntry,
+  WorkoutDay,
+  WorkoutSession,
+} from '@/types';
 
 export default function WorkoutScreen() {
   const { sessionId } = useParams();
@@ -133,6 +144,17 @@ export default function WorkoutScreen() {
       ?.days.find((d) => d.id === session.dayId);
   }, [plan, session]);
 
+  /**
+   * History and progression are read from the same plan only: a verdict is about
+   * a prescription in this program, and mixing another block's loads into the
+   * "last session" line would read as a regression that never happened.
+   */
+  const priorSessions = useMemo(
+    () =>
+      session ? sessions.filter((s) => s.id !== session.id && s.planId === session.planId) : [],
+    [sessions, session],
+  );
+
   // Mirrors `session` so writers never rebuild from a stale render closure — two
   // set-taps landing in one React batch would otherwise lose the first one.
   const sessionRef = useRef<WorkoutSession | null>(null);
@@ -238,8 +260,22 @@ export default function WorkoutScreen() {
   }
 
   const warmUpDone = !!session.warmUpCompletedAt;
-  const blocks = groupByBlock(session, day);
+  const blocks = buildBlocks(day, session, (prescription, result) => {
+    const exerciseId = performedExerciseId(result);
+    const previous = previousResultFor(priorSessions, exerciseId);
+    const verdict = evaluateDoubleProgression(prescription, previous);
+    return {
+      prescription,
+      result,
+      lastSnapshot: lastPerformance(priorSessions, exerciseId),
+      // Only a 'ready' verdict renders; anything else stays out of the way.
+      verdict: verdict.status === 'ready' ? verdict : null,
+    };
+  });
   const nextExercise = session.results.find((r) => !r.completed && !r.skippedReason);
+  // Deliberately partial: the user renames only the bands they own, and every
+  // consumer resolves a missing key through `bandName`'s default.
+  const bandLabels: BandLabels = settings.bandLabels;
   const otherInProgress = sessions.filter(
     (s) => s.status === 'inProgress' && s.id !== session.id,
   ).length;
@@ -268,6 +304,7 @@ export default function WorkoutScreen() {
 
       <WarmUp
         items={session.warmUp}
+        catalog={programFor(plan.programId).warmUp}
         finished={warmUpDone}
         onChange={(warmUp) => patchSession({ warmUp })}
         onFinish={() => {
@@ -297,28 +334,52 @@ export default function WorkoutScreen() {
       {warmUpDone && session.dayType === 'mobility' && <FollowAlongVideo />}
 
       {warmUpDone &&
-        blocks.map((block) => (
-          <div key={block.label}>
-            <div className="block-head">{block.label}</div>
-            <div className="superset-group">
-              {block.items.map(({ prescription, result }) => (
-                <ExerciseCard
-                  key={prescription.id}
-                  prescription={prescription}
-                  result={result}
-                  weightUnit={settings.weightUnit}
-                  isCurrent={nextExercise?.prescriptionId === prescription.id}
-                  expanded={expanded === prescription.id}
-                  onToggleExpand={() =>
-                    setExpanded(expanded === prescription.id ? null : prescription.id)
-                  }
-                  onChange={updateResult}
-                  onRest={(seconds) => rest.start(seconds)}
-                />
-              ))}
+        blocks.map((block) => {
+          // A lone superset names itself in its own header — a block heading above
+          // it would just repeat 'Superset A'.
+          const soloSuperset = block.units.length === 1 && block.units[0]?.supersetKey != null;
+          return (
+            <div key={block.label}>
+              {!soloSuperset && <div className="block-head">{block.label}</div>}
+              {block.units.map((unit) =>
+                unit.supersetKey != null && unit.members.length > 1 ? (
+                  <SupersetGroup
+                    key={unit.supersetKey}
+                    members={unit.members}
+                    weightUnit={settings.weightUnit}
+                    bandLabels={bandLabels}
+                    expandedId={expanded}
+                    currentId={nextExercise?.prescriptionId ?? null}
+                    onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
+                    onChange={updateResult}
+                    onRest={(seconds) => rest.start(seconds)}
+                  />
+                ) : (
+                  unit.members.map((member) => (
+                    <ExerciseCard
+                      key={member.prescription.id}
+                      prescription={member.prescription}
+                      result={member.result}
+                      weightUnit={settings.weightUnit}
+                      bandLabels={bandLabels}
+                      lastSnapshot={member.lastSnapshot}
+                      verdict={member.verdict}
+                      isCurrent={nextExercise?.prescriptionId === member.prescription.id}
+                      expanded={expanded === member.prescription.id}
+                      onToggleExpand={() =>
+                        setExpanded(
+                          expanded === member.prescription.id ? null : member.prescription.id,
+                        )
+                      }
+                      onChange={updateResult}
+                      onRest={(seconds) => rest.start(seconds)}
+                    />
+                  ))
+                ),
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
       {warmUpDone && (
         <div className="card" style={{ marginTop: 16 }}>
@@ -449,25 +510,61 @@ export default function WorkoutScreen() {
   );
 }
 
-interface Block {
-  label: string;
-  items: {
-    prescription: NonNullable<WorkoutDay['prescriptions'][number]>;
-    result: ExerciseResult;
-  }[];
+interface Unit {
+  /** Set when the members are an explicit superset; null for a straight exercise. */
+  supersetKey: string | null;
+  members: SupersetMember[];
 }
 
-function groupByBlock(session: WorkoutSession, day: WorkoutDay | undefined): Block[] {
+interface Block {
+  label: string;
+  units: Unit[];
+}
+
+/**
+ * Splits the day into what is actually performed: blocks for the visual heading,
+ * and inside them units — a superset (prescriptions sharing `supersetKey`) or a
+ * single exercise. Only consecutive prescriptions group, so a program that reuses
+ * a key later in the day still gets two separate supersets.
+ */
+function buildBlocks(
+  day: WorkoutDay | undefined,
+  session: WorkoutSession,
+  memberFor: (prescription: ExercisePrescription, result: ExerciseResult) => SupersetMember,
+): Block[] {
   if (!day) return [];
   const blocks: Block[] = [];
   for (const prescription of [...day.prescriptions].sort((a, b) => a.order - b.order)) {
     const result = session.results.find((r) => r.prescriptionId === prescription.id);
     if (!result) continue;
-    const last = blocks[blocks.length - 1];
-    if (last && last.label === prescription.blockLabel) last.items.push({ prescription, result });
-    else blocks.push({ label: prescription.blockLabel, items: [{ prescription, result }] });
+    const member = memberFor(prescription, result);
+    const key = prescription.supersetKey ?? null;
+
+    let block = blocks[blocks.length - 1];
+    if (!block || block.label !== prescription.blockLabel) {
+      block = { label: prescription.blockLabel, units: [] };
+      blocks.push(block);
+    }
+    const unit = block.units[block.units.length - 1];
+    if (key != null && unit && unit.supersetKey === key) unit.members.push(member);
+    else block.units.push({ supersetKey: key, members: [member] });
   }
   return blocks;
+}
+
+/** The most recent logged result for an exercise, ignoring skips and this session. */
+function previousResultFor(sessions: WorkoutSession[], exerciseId: string): ExerciseResult | null {
+  const ordered = [...sessions].sort((a, b) =>
+    `${b.date}${b.startedAt}`.localeCompare(`${a.date}${a.startedAt}`),
+  );
+  for (const session of ordered) {
+    if (session.status === 'abandoned') continue;
+    const match = session.results.find(
+      (r) => r.skippedReason == null && performedExerciseId(r) === exerciseId,
+    );
+    if (match) return match;
+  }
+  return null;
 }
 
 /** Records any personal record the finished session beat. */

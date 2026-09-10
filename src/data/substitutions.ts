@@ -17,6 +17,14 @@ export const SUBSTITUTIONS: Record<string, string[]> = {
   'farmer-carry': ['suitcase-carry'],
   'step-up': ['bodyweight-squat-supported'],
   'hip-thrust': ['glute-bridge'],
+
+  /* --------------------------------- 14-week hypertrophy block */
+  'incline-dumbbell-press': ['incline-smith-press'],
+  'flat-dumbbell-press': ['chest-press-machine'],
+  'cable-lateral-raise': ['dumbbell-lateral-raise'],
+  'seated-leg-curl': ['lying-leg-curl'],
+  // Back-supported only — this program deliberately has no hanging leg raises.
+  'captains-chair-leg-raise': ['lying-leg-raise'],
 };
 
 export function substitutionsFor(exerciseId: string): string[] {

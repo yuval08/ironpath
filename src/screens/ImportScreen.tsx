@@ -9,6 +9,9 @@ import { parseLegacyTracker } from '@/utils/excelImport';
 import { suggestStartWeight } from '@/utils/progression';
 import type { ImportedWeight } from '@/types';
 
+/** Sentinel for "no mapping": a <select> option must never carry an empty value. */
+const UNMAPPED = 'unmapped';
+
 /**
  * Screen 1: upload a previous Excel tracker.
  * Screen 2: confirm the detected exercise mappings and the suggested start loads.
@@ -144,10 +147,14 @@ export default function ImportScreen() {
                 <label className="field">
                   Maps to
                   <select
-                    value={row.mappedExerciseId ?? ''}
-                    onChange={(e) => void update(row, { mappedExerciseId: e.target.value || null })}
+                    value={row.mappedExerciseId ?? UNMAPPED}
+                    onChange={(e) =>
+                      void update(row, {
+                        mappedExerciseId: e.target.value === UNMAPPED ? null : e.target.value,
+                      })
+                    }
                   >
-                    <option value="">Not mapped — ignore</option>
+                    <option value={UNMAPPED}>Not mapped — ignore</option>
                     {EXERCISES.map((ex) => (
                       <option key={ex.id} value={ex.id}>
                         {ex.name}

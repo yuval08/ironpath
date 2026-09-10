@@ -6,19 +6,19 @@ const LINKS = [
   {
     to: '/library',
     label: 'Exercise Library',
-    hint: '44 movements with instructions and videos',
+    hint: 'Every movement, with instructions and videos',
     Icon: BookOpen,
   },
   {
     to: '/pull-ups',
-    label: 'Pull-Up Goal',
-    hint: 'Records, band assistance, dead hang',
+    label: 'Pull-Ups',
+    hint: 'Band assistance ladder and pull-up progress',
     Icon: Award,
   },
   {
     to: '/assessment',
     label: 'Final Assessment',
-    hint: 'End-of-block testing form',
+    hint: 'End-of-plan testing form',
     Icon: ClipboardCheck,
   },
   {

@@ -1,5 +1,5 @@
-import { buildWeeks, WARM_UP } from '@/data/program';
-import { SCHEMA_VERSION } from '@/types';
+import { programFor } from '@/data/programs';
+import { DEFAULT_BAND_LABELS, SCHEMA_VERSION } from '@/types';
 import type {
   ExerciseResult,
   PainEntry,
@@ -12,6 +12,9 @@ import type {
 let counter = 0;
 const id = (prefix: string) => `${prefix}_${(counter += 1)}`;
 const TS = '2026-08-03T08:00:00.000Z';
+
+/** The factories model the resilience block, which every existing test targets. */
+const RESILIENCE = programFor('movement-resilience');
 
 export function makeSet(overrides: Partial<SetResult> = {}): SetResult {
   return {
@@ -28,6 +31,7 @@ export function makeSet(overrides: Partial<SetResult> = {}): SetResult {
     rpe: null,
     rir: null,
     completed: true,
+    isWarmUp: false,
     ...overrides,
   };
 }
@@ -84,7 +88,7 @@ export function makeSession(overrides: Partial<WorkoutSession> = {}): WorkoutSes
     startedAt: TS,
     completedAt: TS,
     elapsedSeconds: 3000,
-    warmUp: WARM_UP.map((w) => ({ id: w.id, label: w.label, completed: true })),
+    warmUp: RESILIENCE.warmUp.map((w) => ({ id: w.id, label: w.label, completed: true })),
     warmUpCompletedAt: TS,
     results: [],
     painBefore: makePain(),
@@ -105,7 +109,7 @@ export function makePlan(overrides: Partial<WorkoutPlan> = {}): WorkoutPlan {
     startDate: '2026-08-03',
     currentWeek: 1,
     currentDayIndex: 0,
-    weeks: buildWeeks(),
+    weeks: RESILIENCE.buildWeeks(),
     pausePeriods: [
       {
         id: 'pause_1',
@@ -117,6 +121,8 @@ export function makePlan(overrides: Partial<WorkoutPlan> = {}): WorkoutPlan {
     ],
     restartCount: 0,
     completedAt: null,
+    programId: 'movement-resilience',
+    archived: false,
     ...overrides,
   };
 }
@@ -139,6 +145,8 @@ export function makeSettings(overrides: Partial<UserSettings> = {}): UserSetting
     videoOverrides: {},
     weightOverrides: {},
     autoCollapseCompleted: true,
+    activePlanId: null,
+    bandLabels: DEFAULT_BAND_LABELS,
     ...overrides,
   };
 }

@@ -1,11 +1,16 @@
-# Movement & Joint Resilience — 4-Week Tracker
+# Ironpath
 
-A mobile-first, installable PWA for tracking a four-week movement and joint resilience training
-block. Works fully offline, stores everything locally in IndexedDB, and exports the complete history
-to a formatted Excel workbook. No backend, no login, no account.
+A mobile-first, installable PWA for tracking strength training. Works fully offline, stores
+everything locally in IndexedDB, and exports the complete history to a formatted Excel workbook. No
+backend, no login, no account.
 
-The block is a bridge into a four-day hypertrophy routine, built around upper chest, shoulders, knee
-strength, joint health, pull-up progress, movement quality and lower-back safety.
+Ironpath is **multi-program**. It ships with two programs, keeps a separate plan (and separate
+history) for each, and lets you switch between them at any time:
+
+| Program                                 | Length                       | What it is                                                                                                       |
+| --------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **14-Week Hypertrophy — Upper / Lower** | 15 stored weeks, 4 days/week | 2 reload weeks → 12 hypertrophy weeks → 1 deload week, run on performance-based double progression. The default. |
+| **Movement & Joint Resilience**         | 4 weeks, 5 days/week         | The original joint-first block: pull-up skill practice, push-up volume, single-leg work, a mobility day.         |
 
 ---
 
@@ -16,16 +21,17 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-| Command           | What it does                                                           |
-| ----------------- | ---------------------------------------------------------------------- |
-| `npm run dev`     | Vite dev server                                                        |
-| `npm run build`   | Type-check (`tsc -b`) then production build into `dist/`               |
-| `npm run preview` | Serve the production build locally (needed to test the service worker) |
-| `npm run lint`    | ESLint                                                                 |
-| `npm run format`  | Prettier                                                               |
-| `npm test`        | Vitest unit tests                                                      |
-| `npm run e2e`     | Playwright end-to-end tests (builds + previews automatically)          |
-| `npm run icons`   | Regenerate the placeholder PWA icons in `public/icons/`                |
+| Command             | What it does                                                            |
+| ------------------- | ----------------------------------------------------------------------- |
+| `npm run dev`       | Vite dev server                                                         |
+| `npm run build`     | Type-check then production build into `dist/`                           |
+| `npm run typecheck` | `tsc --noEmit -p tsconfig.app.json` — no emit, no stray `.js` in `src/` |
+| `npm run preview`   | Serve the production build locally (needed to test the service worker)  |
+| `npm run lint`      | ESLint                                                                  |
+| `npm run format`    | Prettier                                                                |
+| `npm test`          | Vitest unit tests                                                       |
+| `npm run e2e`       | Playwright end-to-end tests (builds + previews automatically)           |
+| `npm run icons`     | Regenerate the placeholder PWA icons in `public/icons/`                 |
 
 The service worker only runs in a real build. To test install/offline behaviour:
 
@@ -45,70 +51,83 @@ whether persistence was granted.
 
 ---
 
-## The training block
+## The 14-week hypertrophy program
 
-Monday–Friday, four weeks, ~60 minutes per gym session. Saturday and Sunday are rest days — farm
-work is deliberately not tracked as a workout.
+Four training days a week, weekday-mapped, 45–55 minutes per session. Wednesday and the weekend are
+rest days.
 
-| Day       | Session             | Focus                                              |
-| --------- | ------------------- | -------------------------------------------------- |
-| Monday    | Upper Body A        | Pull-up skill, upper back, shoulder health         |
-| Tuesday   | Lower Body A        | Single-leg strength, knee tolerance, hip control   |
-| Wednesday | Mobility & Movement | Joint control, balance, movement quality           |
-| Thursday  | Upper Body B        | Chin-ups, pressing volume, carries                 |
-| Friday    | Lower Body B        | Squat pattern, posterior chain, anti-rotation core |
+| Day      | Session                               | Focus                                              |
+| -------- | ------------------------------------- | -------------------------------------------------- |
+| Monday   | Upper A · Pull-Up + Chest Emphasis    | Assisted pull-ups, incline pressing, rows, delts   |
+| Tuesday  | Lower A · Smith Squat Emphasis        | Squat pattern, hamstrings, quads, glutes, calves   |
+| Thursday | Upper B · Pull-Up + Shoulder Emphasis | Assisted pull-ups, overhead pressing, lats, chest  |
+| Friday   | Lower B · Leg Press Emphasis          | Leg press, split squat, hamstrings, glutes, calves |
 
-Weekly intent: **1** technique and tolerance → **2** volume → **3** control and difficulty →
-**4** consolidation and assessment.
+Week structure: **1–2** reload (technique, then establishing starting loads) → **3–14** the twelve
+hypertrophy weeks → **15** deload. Week phases drive set counts and target RIR; each week carries its
+own guidance text.
 
-Programming constraints baked into the seed data: no conventional deadlifts, no reverse lunges, no
-heavy spinal loading, most sets finishing with 2–3 reps in reserve, and a programmed substitution for
-every movement that commonly provokes knee or shoulder pain.
+Programming constraints baked into the seed data: **no deadlift variation of any kind**, no strict
+pull-up singles and no max-rep pull-up tests, no reverse lunges, and a programmed substitution for
+every movement that commonly provokes knee or shoulder pain. The general warm-up is done **outside**
+the app so it never eats into the session timer.
 
-The pre-workout warm-up (treadmill walk, arm circles, shoulder/hip CARs, band pull-aparts, scapular
-push-ups, bodyweight squats, ankle rocks) is tracked separately — the session timer only starts once
-you mark the warm-up done, so it never eats into the 60 minutes. The morning stretching and McGill
-Big Three routine is intentionally **not** part of the gym session.
+### Double progression
 
-### Scheduling and the trip
+Load is moved by your performance, never by the calendar and never automatically. An exercise is
+ready to progress when, in a single session, every planned working set was completed with good form
+and every one of them reached the **top** of its rep range. Ramp sets never count.
+
+- Loaded exercises → the suggestion is one weight increment up.
+- The assisted pull-up → the suggestion is one band lighter, walking down
+  `Extra heavy → Heavy → Medium → Light → Extra light → No band`.
+
+RIR deliberately does **not** gate readiness — hitting the top of the range at RIR 3 argues more
+strongly for adding load, not less. It only colours the wording. You confirm every change.
+
+### Bands
+
+Band colours and resistances vary by manufacturer, so the six ladder positions are fixed but their
+names are yours: Settings → **Band names**. Renaming never changes the progression order.
+
+---
+
+## Plans
+
+The Plan screen (and Settings) lists every plan on the device with its program, week progress and
+session count. From there you can:
+
+- **switch** which plan you are training,
+- **start a fresh plan** from any program, keeping everything already logged,
+- **archive** a plan you are done with,
+- **delete** a plan — behind a typed confirmation, because deleting a plan also deletes every session
+  logged against it.
 
 Workouts are never locked to calendar dates; the dates on the Plan screen are projections that skip
-any active pause window. A **Travel** pause covering 10–16 August is seeded by default, and you can
-add more on the Plan screen.
-
-When you come back, the Plan screen offers three choices — resume where you stopped, restart the
-current week, or restart the full block. The recommendation shown in the UI is:
-
-> After your trip, restart Week 1 and complete the full four-week block.
+any active pause window.
 
 ---
 
 ## Feature map
 
-| Screen               | What's there                                                                                                                                                                                       |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Dashboard**        | Current week/day, completion %, pull-up & chin-up records, best dead hang, total push-ups, average knee/shoulder/back pain, next session, pause status, start/resume buttons                       |
-| **Plan**             | All four weeks, per-day exercise lists, resume/restart choices, pause manager, full prescription editing (exercise, sets, reps, weight, band, rest, treadmill minutes, order, video, substitution) |
-| **Workout**          | Warm-up checklist, pain before/after, superset-grouped exercise cards, per-set logging, RPE/RIR, notes, per-exercise pain, substitutions, skip reasons, session + rest timers                      |
-| **Library**          | 44 movements — instructions, common mistakes, safety notes, tempo, regression, progression, targets, video links, "new movement" flags, search and category filters                                |
-| **Progress**         | Completion, pull-up/chin-up max, push-up volume, dead hang, backward treadmill duration & speed, knee/shoulder/back pain trends, bodyweight, average RPE, weekly volume, progression suggestions   |
-| **Pull-Up Goal**     | First-pull-up date, max/total strict pull-ups, chin-ups, negative lowering time, band assistance, dead hang, scapular quality                                                                      |
-| **Settings**         | Name, kg/lb, theme, rest defaults, vibration/beep, video overrides, Excel export, JSON backup/restore, storage status, four levels of reset                                                        |
-| **Import**           | Upload a previous Excel tracker, confirm detected exercise mappings, edit and apply suggested starting weights                                                                                     |
-| **Final Assessment** | End-of-block test form plus an on-screen summary, included in the Excel export                                                                                                                     |
-
-### Progression suggestions
-
-Nothing changes on its own. A suggestion appears only after **two** sessions where an exercise had
-all sets completed, form marked clean, pain 0–2 and every recorded RPE ≤ 7. You accept or dismiss it
-on the Progress screen; the workout is never modified automatically.
+| Screen               | What's there                                                                                                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dashboard**        | Today's day, active plan + week label with phase badge, completion, last session's length against the 45–55 min target, pending progression suggestions, next session, pause status |
+| **Plan**             | Plan switcher, every week with phase badges, per-day exercise lists with superset slots, resume/restart choices, pause manager, full prescription editing                           |
+| **Workout**          | Superset-grouped cards, ramp sets, per-set logging with RIR, previous-session history line, progression banners, band picker, pain before/after, session + rest timers              |
+| **Library**          | Every movement — instructions, common mistakes, safety notes, tempo, regression, progression, targets, video links, search and category filters                                     |
+| **Progress**         | Completion, per-exercise weight & rep progression, band-assistance ladder, RIR trend, workout-duration trend, weekly volume, pain trends and flags, 7-day rolling bodyweight        |
+| **Pull-Ups**         | Band-assistance ladder and assisted-pull-up progress on the hypertrophy plan; strict pull-up records and dead hang on the resilience plan                                           |
+| **Settings**         | Plan switcher, name, kg/lb, theme, rest defaults, band names, video overrides, Excel export, JSON backup/restore, storage status, four levels of reset                              |
+| **Import**           | Upload a previous Excel tracker, confirm detected exercise mappings, edit and apply suggested starting weights                                                                      |
+| **Final Assessment** | End-of-plan test form plus an on-screen summary, included in the Excel export                                                                                                       |
 
 ### Pain tracking
 
 Before and after every session: left/right knee, left/right shoulder, lower back, general fatigue,
-each 0–10. Colour bands are 0–2 green, 3–4 yellow, 5+ red. Hitting 5 or higher shows a warning and
-points at the programmed substitution — it never suggests a cause or a diagnosis, and the warning is
-not repeated on every exercise.
+each 0–10. Colour bands are 0–2 green, 3–4 yellow, 5+ red. The Progress screen flags a joint whose
+latest score runs materially above **its own** trailing average. That is a description of your own
+recorded numbers moving — the app never suggests a cause and never offers a diagnosis.
 
 ---
 
@@ -122,32 +141,26 @@ the bundled `workout_tracker_12wk.xlsx` (sheets `Wk01`–`Wk12`) and any tracker
 number of sets or extra columns.
 
 For each detected exercise it takes the heaviest working weight seen, fuzzy-matches it to a library
-movement, and suggests **50%** of that load as a starting point (rounded to the nearest 2.5) — inside
-the 40–60% range appropriate for a technique and tolerance block. Every mapping and weight is
-editable, nothing is applied until you confirm it, and confirmed weights remain editable everywhere
-afterwards. Exercises with no previous data start at bodyweight, the lightest band, or light
-dumbbells.
+movement, and suggests **50%** of that load as a starting point (rounded to the nearest 2.5). Every
+mapping and weight is editable, nothing is applied until you confirm it, and confirmed weights remain
+editable everywhere afterwards.
 
 ---
 
-## Excel export
+## Export and backup
 
-Settings → _Export workout history to Excel_ produces
-`movement-resilience-workout-YYYY-MM-DD.xlsx` with eight sheets:
-
-1. **Summary** — name, dates, completion, pull-up/chin-up/dead-hang start vs finish, push-up record, average pain scores, session notes, final assessment
-2. **Week 1** – 5. **Week 4** — date, day, superset, exercise, planned sets/reps, recommended and actual weight, actual reps by set, band, duration, RPE, RIR, pain, completed, notes, clickable video link
-3. **Exercise Library** — instructions, video, regression, progression, safety notes
-4. **Pain & Recovery** — before/after entries per session with average RPE and comments
-5. **Personal Records** — pull-up, chin-up, push-up, dead hang, backward treadmill, single-leg balance
+Settings → _Export workout history to Excel_ produces `ironpath-workout-YYYY-MM-DD.xlsx`. Per-set
+rows carry the program, program week number, week label and phase, date, weekday and day title,
+superset slot, exercise, set number, set type (`Ramp` / `Work`), weight, reps, band, RIR, RPE,
+completion and notes. Session rows carry the workout duration and the pain entries.
 
 Every sheet has a frozen bold header row, an auto-filter, sensible column widths and number formats.
 Days are separated by a tinted section row rather than merged cells, so filtering keeps working.
 
-JSON backup (`movement-resilience-backup-YYYY-MM-DD.json`) round-trips everything — plans, sessions,
-records, settings, suggestions, assessments and imported weights. Restoring **replaces** local data
-and is validated with Zod first; an invalid or newer-schema file is rejected without touching what
-you already have.
+JSON backup (`ironpath-backup-YYYY-MM-DD.json`) round-trips everything — plans, sessions, records,
+settings, suggestions, assessments and imported weights. Restoring **replaces** local data and is
+validated with Zod first; an invalid or newer-schema file is rejected without touching what you
+already have. Backups written before the rename still import.
 
 ---
 
@@ -155,26 +168,10 @@ you already have.
 
 **Read this before trusting any video link in the app.**
 
-Videos live in [`src/data/exerciseVideos.ts`](src/data/exerciseVideos.ts). Each entry is:
-
-```ts
-type ExerciseVideo = {
-  exerciseId: string;
-  title: string;
-  creator: string;
-  url: string;
-  duration?: string;
-  isShort?: boolean;
-  verified: boolean; // true only for a link you have personally watched
-  unavailable?: boolean;
-  userProvided?: boolean;
-};
-```
-
-Every shipped entry has `verified: false` and points at a **YouTube search URL**, not a specific
-video. The UI labels those buttons "Search YouTube" rather than "Watch video" precisely so that an
-unchecked link never masquerades as a verified demonstration. Nothing is embedded; links always open
-externally in YouTube or the browser.
+Videos live in [`src/data/exerciseVideos.ts`](src/data/exerciseVideos.ts). Every shipped entry has
+`verified: false` and points at a **YouTube search URL**, not a specific video. The UI labels those
+buttons "Search YouTube" rather than "Watch video" precisely so that an unchecked link never
+masquerades as a verified demonstration. Nothing is embedded; links always open externally.
 
 ### Option A — pin a video from inside the app (no code, survives rebuilds)
 
@@ -183,44 +180,15 @@ externally in YouTube or the browser.
 3. The override is stored in IndexedDB and is included in JSON backups. Clear the field to fall back
    to the default search link.
 
-You can also copy a link or mark a video unavailable from the video row on any exercise.
-
 ### Option B — edit the config file (ships with the app for everyone)
 
 1. Open the search link, pick a clip from a creator you trust.
-2. Replace that entry in `EXERCISE_VIDEOS`:
-
-```ts
-{
-  exerciseId: 'terminal-knee-extension',
-  title: 'Terminal Knee Extension',
-  creator: 'E3 Rehab',
-  url: 'https://www.youtube.com/watch?v=REAL_VIDEO_ID',
-  duration: '2:14',
-  verified: true,   // set this only after you have watched it
-}
-```
-
+2. Replace that entry in `EXERCISE_VIDEOS`, setting `verified: true` only after you have watched it.
 3. Re-run `npm run build`.
 
 Preferred creators, already used in the search queries: Squat University, Tom Merrick (Bodyweight
 Warrior), Strength Side, Precision Movement, Knees Over Toes Guy, Renaissance Periodization,
 E3 Rehab, FitnessFAQs, Calisthenicmovement.
-
-### The Wednesday follow-along routine
-
-The Mobility & Movement day shows a "Watch follow-along mobility routine" action alongside the
-individual movement demonstrations. The default is a search URL. Two concrete candidates are listed
-in `MOBILITY_FOLLOW_ALONG_CANDIDATES` for a 15–25 minute full-body routine covering shoulders,
-thoracic spine, hips and ankles:
-
-- `https://www.youtube.com/watch?v=BSkPVmh7-qA` — "20 Min Mobility Routine (FOLLOW ALONG)"
-- `https://www.youtube.com/watch?v=lPKRiU9u_Hc` — "20 Minute Full Body Flexibility Routine (FOLLOW ALONG)"
-
-Both are marked `verified: false`. The first URL resolved to a live page with a matching title at
-authoring time, but the channel and duration were **not** independently confirmed, so neither is
-hard-coded as the default. Watch one, then either promote it to `MOBILITY_FOLLOW_ALONG` with
-`verified: true`, or pin it via Settings → Videos.
 
 ---
 
@@ -228,17 +196,20 @@ hard-coded as the default. Watch one, then either promote it to `MOBILITY_FOLLOW
 
 ```
 src/
-  components/     ExerciseCard, SetRow, WarmUp, PainScale, VideoLink, Charts, Sheet, PauseManager, …
-  data/           exercises.ts (44 movements) · program.ts (canonical template → 4 weeks)
-                  exerciseVideos.ts · substitutions.ts
+  components/     ExerciseCard, SetRow, WarmUp, PainScale, BandPicker, HistoryLine,
+                  ProgressionBanner, VideoLink, Charts, Sheet, PauseManager, …
+  data/
+    programs/     index.ts (registry) · hypertrophy14.ts · movementResilience.ts · timing.ts
+    exercises.ts · exerciseVideos.ts · substitutions.ts
   db/             db.ts (Dexie) · repository.ts (all persistence) · migrations.ts
   hooks/          useTimers.ts (stopwatch + rest timer) · useTheme.ts
-  screens/        Dashboard, Plan, Workout, Library, Progress, More, Settings, Import,
-                  FinalAssessment, PullUp
+  screens/        Dashboard, Plan, PlanSwitcher, Workout, Library, Progress, More, Settings,
+                  Import, FinalAssessment, PullUp · progress/ (extracted charts)
   state/          AppDataProvider (live IndexedDB queries) · ToastProvider
-  styles/         index.css (design tokens, light/dark)
+  styles/         index.css (design tokens) · shell.css · workout.css
   types/          Zod schemas + inferred TypeScript types
-  utils/          stats.ts · progression.ts · excelExport.ts · excelImport.ts · backup.ts
+  utils/          stats.ts · progression.ts · doubleProgression.ts · excelExport.ts ·
+                  excelImport.ts · backup.ts
 e2e/              Playwright specs
 scripts/          generate-icons.mjs
 ```
@@ -253,26 +224,35 @@ also runs on data arriving from an old JSON backup that Dexie never sees. To add
 2. Add `{ to, describe, migrate }` to `MIGRATIONS`.
 3. Add a Dexie `.version()` block in `db.ts` if indexes changed.
 
+The IndexedDB database is still named `movement-resilience`. Renaming it would orphan every existing
+install's real data, so the name is deliberately left alone — only the app is called Ironpath.
+
 ### Program seeding
 
-There is exactly one canonical five-day template (`DAY_TEMPLATES` in `src/data/program.ts`). All four
-weeks are generated from it by applying per-week deltas (`weekly: { minutes: [8, 10, 12, 15] }`), so
-there is no duplicated week data to drift. Everything stays editable per-day from the Plan screen.
+Each program owns one canonical day template and generates all of its weeks from it, so there is no
+duplicated week data to drift. The hypertrophy program scales sets and target RIR per week phase;
+the resilience program applies per-week deltas. Everything stays editable per-day from the Plan
+screen.
+
+On first run Ironpath creates a hypertrophy plan and makes it active. On an install that predates
+Ironpath, the hypertrophy plan is added **once**, non-destructively, alongside the existing plan and
+all its history.
 
 ---
 
 ## Testing
 
 ```bash
-npm test     # 113 unit tests
-npm run e2e  # 7 end-to-end tests
+npm test     # unit tests
+npm run e2e  # end-to-end tests
 ```
 
-Unit tests cover the calculation layer (pain bands, rep/volume/completion maths, unit conversion),
-the progression rules, program generation, the repository (seeding, scheduling around pauses, session
-lifecycle, all three resume choices, personal records), Excel export (sheet structure, frozen headers,
-filters, cell contents via a real write/read round-trip) and the legacy Excel importer (run against
-the real `workout_tracker_12wk.xlsx`), plus JSON backup/restore including rejection paths.
+Unit tests cover the calculation layer (pain bands, rep/volume/completion maths, unit conversion,
+trends), the double-progression engine, the progression suggestion rules, program generation
+(including the weekly volume targets and the no-deadlift / no-strict-pull-up guarantees), the
+repository (seeding, multi-plan resolution, scheduling around pauses, session lifecycle, resume
+choices, personal records), Excel export via a real write/read round-trip, the legacy Excel importer,
+and JSON backup/restore including rejection paths.
 
 End-to-end tests cover completing a workout, resuming an unfinished one, pausing the plan, restarting
 Week 1, exporting Excel, restoring a JSON backup, and PWA installability (manifest, service worker
@@ -282,10 +262,9 @@ control, offline reload).
 
 ## Icons
 
-`public/icons/*.png` are generated placeholders (a teal tile with a pull-up bar glyph) produced by
-`npm run icons`. Replace them with real artwork at 192×192, 512×512, a 512×512 maskable variant with
-safe padding, and a 180×180 Apple touch icon — the filenames are referenced from
-`vite.config.ts` and `index.html`.
+`public/icons/*.png` are generated placeholders produced by `npm run icons`. Replace them with real
+artwork at 192×192, 512×512, a 512×512 maskable variant with safe padding, and a 180×180 Apple touch
+icon — the filenames are referenced from `vite.config.ts` and `index.html`.
 
 ---
 
@@ -295,5 +274,6 @@ safe padding, and a 180×180 Apple touch icon — the filenames are referenced f
 > causes sharp, worsening, or unusual pain. Seek evaluation from a qualified medical professional when
 > needed.
 
-The pull-up section shows a four-week target of 3–5 clean consecutive strict pull-ups. That is a
-direction to train toward, not a promise — the app labels it as such.
+The hypertrophy program does not prescribe strict pull-ups and never asks you to test them. The
+resilience block shows a target of 3–5 clean consecutive strict pull-ups; that is a direction to
+train toward, not a promise, and the app labels it as such.

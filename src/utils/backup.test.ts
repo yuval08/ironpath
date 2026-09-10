@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/db/db';
 import { buildBackup, backupFileName, restoreBackup } from './backup';
 import { makePlan, makeResult, makeSession, makeSettings } from '@/test/factories';
+import { PROGRAMS } from '@/data/programs';
+import { getPlan } from '@/db/repository';
 
 async function clearAll() {
   await Promise.all([
@@ -22,7 +24,7 @@ describe('backup', () => {
 
   it('names the file with the export date', () => {
     expect(backupFileName(new Date('2026-08-28T09:00:00Z'))).toBe(
-      'movement-resilience-backup-2026-08-28.json',
+      'ironpath-backup-2026-08-28.json',
     );
   });
 
@@ -37,7 +39,7 @@ describe('backup', () => {
     await db.settings.put(makeSettings());
 
     const backup = await buildBackup();
-    expect(backup.app).toBe('movement-resilience');
+    expect(backup.app).toBe('ironpath');
     expect(backup.sessions).toHaveLength(1);
 
     await clearAll();
@@ -99,5 +101,145 @@ describe('empty backup guard (regression)', () => {
 
     expect(await db.plans.count()).toBe(1);
     expect(await db.sessions.get('keep')).toBeDefined();
+  });
+});
+
+describe('multi-program backups', () => {
+  beforeEach(async () => {
+    await clearAll();
+  });
+
+  it('round-trips every plan and each plan’s sessions, not just the active one', async () => {
+    const resilience = makePlan({ id: 'plan_res', programId: 'movement-resilience' });
+    const hypertrophy = makePlan({
+      id: 'plan_hyp',
+      name: '14-Week Hypertrophy — Upper / Lower',
+      programId: 'hypertrophy-14wk',
+      weeks: PROGRAMS['hypertrophy-14wk'].buildWeeks(),
+    });
+    await db.plans.bulkPut([resilience, hypertrophy]);
+    await db.sessions.bulkPut([
+      makeSession({ id: 's_res', planId: resilience.id }),
+      makeSession({ id: 's_hyp', planId: hypertrophy.id }),
+    ]);
+    await db.settings.put(makeSettings({ activePlanId: hypertrophy.id }));
+
+    const backup = await buildBackup();
+    expect(backup.plans.map((p) => p.id).sort()).toEqual(['plan_hyp', 'plan_res']);
+
+    await clearAll();
+    const result = await restoreBackup(JSON.parse(JSON.stringify(backup)));
+    expect(result.plans).toBe(2);
+    expect((await db.plans.get('plan_hyp'))?.weeks).toHaveLength(15);
+    expect((await db.plans.get('plan_hyp'))?.programId).toBe('hypertrophy-14wk');
+    expect(await db.sessions.get('s_res')).toBeDefined();
+    expect(await db.sessions.get('s_hyp')).toBeDefined();
+    expect((await db.settings.get('settings'))?.activePlanId).toBe('plan_hyp');
+  });
+
+  /**
+   * Backups taken before the Ironpath rename carry app: 'movement-resilience'.
+   * Rejecting them would strand the only copy of a user's history.
+   */
+  it('imports a backup written under the old app name', async () => {
+    await db.plans.put(makePlan());
+    await db.settings.put(makeSettings());
+    const backup = await buildBackup();
+
+    await clearAll();
+    const legacy = { ...JSON.parse(JSON.stringify(backup)), app: 'movement-resilience' };
+    await expect(restoreBackup(legacy)).resolves.toMatchObject({ plans: 1 });
+    expect(await db.plans.count()).toBe(1);
+  });
+
+  it('rejects a file whose app literal is neither', async () => {
+    await db.plans.put(makePlan());
+    await db.settings.put(makeSettings());
+    const backup = await buildBackup();
+    await expect(restoreBackup({ ...backup, app: 'some-other-app' })).rejects.toThrow(
+      /not a valid backup/i,
+    );
+  });
+
+  it('carries ramp sets through a round trip', async () => {
+    const plan = makePlan();
+    await db.plans.put(plan);
+    await db.settings.put(makeSettings());
+    await db.sessions.put(
+      makeSession({
+        id: 's_ramp',
+        planId: plan.id,
+        results: [
+          makeResult('standard-push-up', [
+            { setNumber: 1, reps: 5, weight: 20, isWarmUp: true },
+            { setNumber: 2, reps: 10, weight: 40 },
+          ]),
+        ],
+      }),
+    );
+
+    const backup = await buildBackup();
+    await clearAll();
+    await restoreBackup(JSON.parse(JSON.stringify(backup)));
+
+    const sets = (await db.sessions.get('s_ramp'))?.results[0]?.sets ?? [];
+    expect(sets.map((s) => s.isWarmUp)).toEqual([true, false]);
+  });
+});
+
+describe('active plan pointer after a restore', () => {
+  beforeEach(async () => {
+    await clearAll();
+  });
+
+  /**
+   * Settings and plans travel in the same backup, so the pointer normally still
+   * resolves. A backup taken after a plan was deleted can carry a stale id, and a
+   * dangling pointer that resolved to `undefined` would strand the app on the
+   * loading screen with no route to Settings — the same unrecoverable startup the
+   * RecoveryScreen exists to prevent.
+   */
+  it('drops an activePlanId that names a plan the backup does not contain', async () => {
+    await db.plans.put(makePlan({ id: 'plan_kept' }));
+    await db.settings.put(makeSettings({ activePlanId: 'plan_that_was_deleted' }));
+    const backup = await buildBackup();
+
+    await clearAll();
+    await restoreBackup(JSON.parse(JSON.stringify(backup)));
+
+    // The restore normalises it rather than leaving a pointer nothing can follow.
+    expect((await db.settings.get('settings'))?.activePlanId).toBeNull();
+    const active = await getPlan();
+    expect(active?.id).toBe('plan_kept');
+  });
+
+  it('drops a dangling pointer even when other plans are present', async () => {
+    await db.plans.bulkPut([
+      makePlan({ id: 'plan_archived', archived: true }),
+      makePlan({ id: 'plan_live' }),
+    ]);
+    await db.settings.put(makeSettings({ activePlanId: 'gone' }));
+    const backup = await buildBackup();
+
+    await clearAll();
+    await restoreBackup(JSON.parse(JSON.stringify(backup)));
+
+    expect((await db.settings.get('settings'))?.activePlanId).toBeNull();
+    // null resolves to the first NON-archived plan, not simply the first.
+    expect((await getPlan())?.id).toBe('plan_live');
+  });
+
+  it('restores a pointer that does resolve, across two plans', async () => {
+    await db.plans.bulkPut([
+      makePlan({ id: 'plan_a', archived: true }),
+      makePlan({ id: 'plan_b', programId: 'hypertrophy-14wk' }),
+    ]);
+    await db.settings.put(makeSettings({ activePlanId: 'plan_b' }));
+    const backup = await buildBackup();
+
+    await clearAll();
+    await restoreBackup(JSON.parse(JSON.stringify(backup)));
+
+    expect((await getPlan())?.id).toBe('plan_b');
   });
 });

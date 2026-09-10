@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION } from '@/types';
+import { DEFAULT_BAND_LABELS, SCHEMA_VERSION } from '@/types';
 
 /**
  * Record-level migrations, applied on read/import to any row whose
@@ -21,13 +21,88 @@ export interface RecordMigration {
   migrate: (row: Record<string, unknown>) => Record<string, unknown>;
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** v1 -> v2: multi-program plans, superset/progression metadata, ramp sets, band labels. */
+function toV2(row: Record<string, unknown>): Record<string, unknown> {
+  // migrateRecord runs over EVERY table (and over rows from old backup files), so
+  // each branch sniffs the row shape instead of assuming a type. Anything that
+  // matches nothing passes through untouched.
+
+  if (Array.isArray(row.weeks)) {
+    return {
+      ...row,
+      programId: row.programId ?? 'movement-resilience',
+      archived: row.archived ?? false,
+      weeks: row.weeks.map((week) => {
+        if (!isRecord(week)) return week;
+        return {
+          ...week,
+          phase: week.phase ?? 'base',
+          blockWeek: week.blockWeek ?? null,
+          days: Array.isArray(week.days)
+            ? week.days.map((day) => {
+                if (!isRecord(day)) return day;
+                return {
+                  ...day,
+                  prescriptions: Array.isArray(day.prescriptions)
+                    ? day.prescriptions.map((p) => {
+                        if (!isRecord(p)) return p;
+                        return {
+                          ...p,
+                          role: p.role ?? 'accessory',
+                          progressionType: p.progressionType ?? 'fixed',
+                          targetRirLow: p.targetRirLow ?? null,
+                          targetRirHigh: p.targetRirHigh ?? null,
+                          weightIncrement: p.weightIncrement ?? null,
+                          rampSets: p.rampSets ?? 0,
+                        };
+                      })
+                    : day.prescriptions,
+                };
+              })
+            : week.days,
+        };
+      }),
+    };
+  }
+
+  if (Array.isArray(row.results)) {
+    return {
+      ...row,
+      results: row.results.map((result) => {
+        if (!isRecord(result)) return result;
+        return {
+          ...result,
+          sets: Array.isArray(result.sets)
+            ? result.sets.map((set) =>
+                isRecord(set) ? { ...set, isWarmUp: set.isWarmUp ?? false } : set,
+              )
+            : result.sets,
+        };
+      }),
+    };
+  }
+
+  if (row.weightUnit !== undefined) {
+    return {
+      ...row,
+      activePlanId: row.activePlanId ?? null,
+      bandLabels: row.bandLabels ?? DEFAULT_BAND_LABELS,
+    };
+  }
+
+  return row;
+}
+
 export const MIGRATIONS: RecordMigration[] = [
-  // Example for the next schema change — keep as a template:
-  // {
-  //   to: 2,
-  //   describe: 'Add ExerciseResult.formGood defaulting to null',
-  //   migrate: (row) => ({ ...row, formGood: row.formGood ?? null }),
-  // },
+  {
+    to: 2,
+    describe:
+      'Ironpath schema v2 — multi-program plans, superset/progression metadata, ramp sets, band labels',
+    migrate: toV2,
+  },
 ];
 
 export function migrateRecord<T extends { schemaVersion?: number }>(row: T): T {

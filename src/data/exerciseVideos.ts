@@ -184,6 +184,42 @@ export const EXERCISE_VIDEOS: VideoReference[] = [
     'Calisthenicmovement',
   ),
   search('bodyweight-squat', 'bodyweight squat technique Squat University', 'Squat University'),
+
+  /* ------------------------------------- 14-week hypertrophy block */
+  search(
+    'incline-dumbbell-press',
+    'incline dumbbell press technique Renaissance Periodization',
+    'Renaissance Periodization',
+  ),
+  search('incline-smith-press', 'incline smith machine press technique', 'Renaissance Periodization'),
+  search('flat-dumbbell-press', 'flat dumbbell bench press technique', 'Renaissance Periodization'),
+  search('chest-press-machine', 'chest press machine setup technique', 'Renaissance Periodization'),
+  search(
+    'seated-dumbbell-shoulder-press',
+    'seated dumbbell shoulder press technique',
+    'Renaissance Periodization',
+  ),
+  search('cable-lateral-raise', 'cable lateral raise side delt technique', 'Renaissance Periodization'),
+  search('dumbbell-lateral-raise', 'dumbbell lateral raise technique', 'Renaissance Periodization'),
+  search('chest-supported-row', 'chest supported row technique', 'Renaissance Periodization'),
+  search(
+    'neutral-grip-lat-pulldown',
+    'neutral grip lat pulldown technique',
+    'Renaissance Periodization',
+  ),
+  search('cable-face-pull', 'cable face pull technique shoulder health E3 Rehab', 'E3 Rehab'),
+  search('smith-machine-squat', 'smith machine squat technique Squat University', 'Squat University'),
+  search('leg-press', 'leg press technique setup Squat University', 'Squat University'),
+  search('leg-extension', 'leg extension technique knee health E3 Rehab', 'E3 Rehab'),
+  search('seated-leg-curl', 'seated leg curl technique hamstrings', 'Renaissance Periodization'),
+  search('lying-leg-curl', 'lying leg curl technique hamstrings', 'Renaissance Periodization'),
+  search('cable-crunch', 'kneeling cable crunch technique abs', 'Renaissance Periodization'),
+  search(
+    'captains-chair-leg-raise',
+    'captains chair leg raise technique abs',
+    'Calisthenicmovement',
+  ),
+  search('lying-leg-raise', 'lying leg raise technique lower abs', 'Calisthenicmovement'),
 ];
 
 const BY_ID: Record<string, VideoReference> = Object.fromEntries(

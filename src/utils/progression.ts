@@ -1,28 +1,43 @@
 import { exerciseName, getExercise } from '@/data/exercises';
 import { newId, nowIso } from '@/db/db';
 import { SCHEMA_VERSION } from '@/types';
-import type { ExerciseResult, ProgressionSuggestion, WorkoutSession } from '@/types';
+import type {
+  ExercisePrescription,
+  ExerciseResult,
+  ProgressionSuggestion,
+  WorkoutPlan,
+  WorkoutSession,
+} from '@/types';
+import {
+  bandName,
+  evaluateDoubleProgression,
+  workingSets,
+  type ProgressionVerdict,
+} from './doubleProgression';
 import { performedExerciseId, setReps } from './stats';
 
 /**
  * Progression is *suggested*, never applied automatically. A suggestion fires when
  * the same exercise clears every gate below in at least two sessions:
- *   - all planned sets completed
+ *   - all planned working sets completed (ramp sets are ignored)
  *   - form marked good
  *   - pain during the exercise 0-2 (or not reported)
  *   - every recorded RPE <= 7
+ *
+ * Double-progression prescriptions bypass this heuristic entirely — see
+ * `evaluateDoubleProgression`, which needs a single qualifying session.
  */
 export const MIN_SUCCESSFUL_SESSIONS = 2;
 
 export function isSuccessfulResult(result: ExerciseResult): boolean {
   if (result.skippedReason) return false;
   if (!result.completed) return false;
-  const allSetsDone =
-    result.sets.length >= result.plannedSets && result.sets.every((s) => s.completed);
+  const sets = workingSets(result);
+  const allSetsDone = sets.length >= result.plannedSets && sets.every((s) => s.completed);
   if (!allSetsDone) return false;
   if (result.formGood !== true) return false;
   if (result.painDuring != null && result.painDuring > 2) return false;
-  const rpes = result.sets.map((s) => s.rpe).filter((v): v is number => typeof v === 'number');
+  const rpes = sets.map((s) => s.rpe).filter((v): v is number => typeof v === 'number');
   if (rpes.some((r) => r > 7)) return false;
   return true;
 }
@@ -80,40 +95,125 @@ export function recommendationFor(exerciseId: string): Recommendation {
   return { kind: 'reps', text: 'Add 1-2 reps per set while keeping the last rep clean.' };
 }
 
+/** dayId -> prescriptionId -> prescription, so a result can find its own rules. */
+function prescriptionIndex(plan: WorkoutPlan): Map<string, Map<string, ExercisePrescription>> {
+  const index = new Map<string, Map<string, ExercisePrescription>>();
+  for (const week of plan.weeks) {
+    for (const day of week.days) {
+      index.set(day.id, new Map(day.prescriptions.map((p) => [p.id, p])));
+    }
+  }
+  return index;
+}
+
+function usesDoubleProgression(p: ExercisePrescription | undefined): boolean {
+  return p?.progressionType === 'double' || p?.progressionType === 'bandAssist';
+}
+
+/** When a session is considered to have happened, for re-raise comparisons. */
+function sessionTime(session: WorkoutSession): string {
+  return session.completedAt ?? session.startedAt ?? session.date;
+}
+
+interface Tally {
+  count: number;
+  threshold: number;
+  lastResult: ExerciseResult;
+  /** Time of the most recent qualifying session — drives the re-raise rule. */
+  lastQualifiedAt: string;
+  verdict: ProgressionVerdict | null;
+  repsHigh: number | null;
+}
+
+function recommendationForVerdict(verdict: ProgressionVerdict, exerciseId: string): Recommendation {
+  if (verdict.kind === 'weight') {
+    return {
+      kind: 'weight',
+      text:
+        verdict.suggestedWeight != null
+          ? `Increase to ${verdict.suggestedWeight} next session, keeping the same rep range.`
+          : 'Add the smallest available load increment next session.',
+    };
+  }
+  if (verdict.kind === 'assistance') {
+    return {
+      kind: 'assistance',
+      text: verdict.suggestedBand
+        ? `Move to the ${bandName(verdict.suggestedBand)} band — slightly less assistance.`
+        : 'Use slightly less band assistance next session.',
+    };
+  }
+  return recommendationFor(exerciseId);
+}
+
 /**
  * Scans session history and returns one pending suggestion per qualifying exercise.
- * Existing accepted/dismissed suggestions are preserved and never re-raised.
+ *
+ * With a `plan`, prescriptions marked `double`/`bandAssist` are judged by
+ * `evaluateDoubleProgression` and need a single qualifying session; everything else
+ * keeps the two-clean-sessions heuristic. Without a plan the old heuristic applies
+ * throughout.
  */
 export function detectProgressions(
   sessions: WorkoutSession[],
   existing: ProgressionSuggestion[] = [],
+  plan?: WorkoutPlan,
 ): ProgressionSuggestion[] {
-  const successCount = new Map<string, number>();
-  const lastResult = new Map<string, ExerciseResult>();
+  const index = plan ? prescriptionIndex(plan) : null;
+  const tallies = new Map<string, Tally>();
 
-  for (const session of sessions) {
+  const ordered = [...sessions].sort((a, b) =>
+    `${a.date}${a.startedAt}`.localeCompare(`${b.date}${b.startedAt}`),
+  );
+
+  for (const session of ordered) {
     if (session.status !== 'completed') continue;
     for (const result of session.results) {
-      if (!isSuccessfulResult(result)) continue;
+      const prescription = index?.get(session.dayId)?.get(result.prescriptionId);
+      let verdict: ProgressionVerdict | null = null;
+      if (usesDoubleProgression(prescription)) {
+        verdict = evaluateDoubleProgression(prescription as ExercisePrescription, result);
+        if (verdict.status !== 'ready') continue;
+      } else if (!isSuccessfulResult(result)) {
+        continue;
+      }
       // Key by the exercise actually performed — a substituted movement must not
       // earn a progression suggestion for the exercise it replaced.
       const id = performedExerciseId(result);
-      successCount.set(id, (successCount.get(id) ?? 0) + 1);
-      lastResult.set(id, result);
+      const prev = tallies.get(id);
+      tallies.set(id, {
+        count: (prev?.count ?? 0) + 1,
+        threshold: verdict ? 1 : (prev?.threshold ?? MIN_SUCCESSFUL_SESSIONS),
+        lastResult: result,
+        lastQualifiedAt: sessionTime(session),
+        verdict,
+        repsHigh: prescription?.repsHigh ?? null,
+      });
     }
   }
 
-  // Dismissed suggestions are included: re-raising one would mint a fresh row
-  // after every completed session and pile up duplicates the user already refused.
-  const handled = new Set(existing.map((s) => s.exerciseId));
+  // A pending suggestion always suppresses a duplicate. An accepted or dismissed one
+  // only suppresses sessions up to its own detection — otherwise a user could be told
+  // to add weight exactly once per exercise, forever.
+  const pending = new Set(existing.filter((s) => s.status === 'pending').map((s) => s.exerciseId));
+  const settledAt = new Map<string, string>();
+  for (const s of existing) {
+    if (s.status === 'pending') continue;
+    const current = settledAt.get(s.exerciseId);
+    if (current == null || s.detectedAt > current) settledAt.set(s.exerciseId, s.detectedAt);
+  }
 
   const out: ProgressionSuggestion[] = [];
-  for (const [exerciseId, count] of successCount) {
-    if (count < MIN_SUCCESSFUL_SESSIONS) continue;
-    if (handled.has(exerciseId)) continue;
-    const rec = recommendationFor(exerciseId);
-    const best = lastResult.get(exerciseId);
-    const bestReps = best ? Math.max(0, ...best.sets.map(setReps)) : 0;
+  for (const [exerciseId, tally] of tallies) {
+    if (tally.count < tally.threshold) continue;
+    if (pending.has(exerciseId)) continue;
+    const settled = settledAt.get(exerciseId);
+    if (settled != null && !(tally.lastQualifiedAt > settled)) continue;
+
+    const rec = tally.verdict
+      ? recommendationForVerdict(tally.verdict, exerciseId)
+      : recommendationFor(exerciseId);
+    const bestReps = Math.max(0, ...tally.lastResult.sets.map(setReps));
     const ts = nowIso();
     out.push({
       id: newId('sug'),
@@ -122,9 +222,13 @@ export function detectProgressions(
       schemaVersion: SCHEMA_VERSION,
       exerciseId,
       exerciseName: exerciseName(exerciseId),
-      reason: `${count} clean sessions — all sets completed, good form, low pain, RPE 7 or under${
-        bestReps ? ` (best set ${bestReps} reps)` : ''
-      }.`,
+      reason: tally.verdict
+        ? `Hit the top of the rep range${
+            tally.repsHigh ? ` (${tally.repsHigh})` : ''
+          } on every working set with good form.`
+        : `${tally.count} clean sessions — all sets completed, good form, low pain, RPE 7 or under${
+            bestReps ? ` (best set ${bestReps} reps)` : ''
+          }.`,
       recommendation: rec.text,
       kind: rec.kind,
       status: 'pending',

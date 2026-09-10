@@ -1,4 +1,4 @@
-import { PUSH_UP_EXERCISE_IDS } from '@/data/program';
+import { PUSH_UP_EXERCISE_IDS } from '@/data/programs';
 import type {
   ExerciseResult,
   PainEntry,
@@ -8,7 +8,14 @@ import type {
   WorkoutSession,
 } from '@/types';
 
-export const TOTAL_SESSIONS = 20; // 4 weeks x 5 training days
+/** Only used when no plan is available — the original 4 weeks x 5 training days. */
+export const DEFAULT_TOTAL_SESSIONS = 20;
+
+/** Planned sessions for a plan: every day of every stored week. */
+export function totalSessionsFor(plan: WorkoutPlan | null | undefined): number {
+  if (!plan) return DEFAULT_TOTAL_SESSIONS;
+  return plan.weeks.reduce((sum, week) => sum + week.days.length, 0);
+}
 
 /* ------------------------------------------------------------------ */
 /* Pain                                                                */
@@ -87,9 +94,27 @@ export function completedSessions(sessions: WorkoutSession[]): WorkoutSession[] 
   return sessions.filter((s) => s.status === 'completed');
 }
 
-export function completionPercent(sessions: WorkoutSession[], total = TOTAL_SESSIONS): number {
+export function completionPercent(
+  sessions: WorkoutSession[],
+  total = DEFAULT_TOTAL_SESSIONS,
+): number {
   if (total <= 0) return 0;
   return Math.min(100, Math.round((completedSessions(sessions).length / total) * 100));
+}
+
+/**
+ * Ramp sets are logged for context only. Nothing that counts reps, volume or
+ * progress may see them, or a heavy single-rep ramp would inflate the numbers.
+ */
+export function workingSetsOf(result: ExerciseResult): SetResult[] {
+  return result.sets.filter((s) => !s.isWarmUp);
+}
+
+/** Weight x reps across the completed working sets of one exercise. */
+export function exerciseVolume(result: ExerciseResult): number {
+  return workingSetsOf(result)
+    .filter((s) => s.completed)
+    .reduce((sum, set) => sum + (set.weight ?? 0) * setReps(set), 0);
 }
 
 /** Total reps logged for one set, counting both sides for per-side entries. */
@@ -101,7 +126,9 @@ export function setReps(set: SetResult): number {
 }
 
 export function exerciseReps(result: ExerciseResult): number {
-  return result.sets.filter((s) => s.completed).reduce((sum, s) => sum + setReps(s), 0);
+  return workingSetsOf(result)
+    .filter((s) => s.completed)
+    .reduce((sum, s) => sum + setReps(s), 0);
 }
 
 export function pushUpTotal(sessions: WorkoutSession[]): number {
@@ -141,7 +168,7 @@ export function maxRepsForExercise(sessions: WorkoutSession[], exerciseId: strin
   for (const session of sessions) {
     for (const result of session.results) {
       if (!counts(result, exerciseId)) continue;
-      for (const set of result.sets) {
+      for (const set of workingSetsOf(result)) {
         if (!set.completed) continue;
         max = Math.max(max, setReps(set));
       }
@@ -164,7 +191,7 @@ export function maxDurationForExercise(sessions: WorkoutSession[], exerciseId: s
   for (const session of sessions) {
     for (const result of session.results) {
       if (!counts(result, exerciseId)) continue;
-      for (const set of result.sets) {
+      for (const set of workingSetsOf(result)) {
         if (!set.completed) continue;
         max = Math.max(max, set.durationSeconds ?? 0);
       }
@@ -178,7 +205,7 @@ export function maxTreadmillMinutes(sessions: WorkoutSession[], exerciseId: stri
   for (const session of sessions) {
     for (const result of session.results) {
       if (!counts(result, exerciseId)) continue;
-      for (const set of result.sets) {
+      for (const set of workingSetsOf(result)) {
         if (!set.completed) continue;
         max = Math.max(max, set.treadmillMinutes ?? 0);
       }
@@ -192,7 +219,7 @@ export function maxTreadmillSpeed(sessions: WorkoutSession[], exerciseId: string
   for (const session of sessions) {
     for (const result of session.results) {
       if (!counts(result, exerciseId)) continue;
-      for (const set of result.sets) {
+      for (const set of workingSetsOf(result)) {
         max = Math.max(max, set.treadmillSpeed ?? 0);
       }
     }
@@ -202,7 +229,7 @@ export function maxTreadmillSpeed(sessions: WorkoutSession[], exerciseId: string
 
 export function averageRpe(session: WorkoutSession): number | null {
   const values = session.results
-    .flatMap((r) => r.sets)
+    .flatMap(workingSetsOf)
     .map((s) => s.rpe)
     .filter((v): v is number => typeof v === 'number');
   if (values.length === 0) return null;
@@ -211,14 +238,7 @@ export function averageRpe(session: WorkoutSession): number | null {
 
 /** Sum of weight x reps across completed sets — a rough weekly tonnage figure. */
 export function sessionVolume(session: WorkoutSession): number {
-  return session.results.reduce(
-    (sum, result) =>
-      sum +
-      result.sets
-        .filter((s) => s.completed)
-        .reduce((s, set) => s + (set.weight ?? 0) * setReps(set), 0),
-    0,
-  );
+  return session.results.reduce((sum, result) => sum + exerciseVolume(result), 0);
 }
 
 export function weeklyVolume(sessions: WorkoutSession[]): Record<number, number> {
@@ -234,6 +254,67 @@ export function sessionProgress(session: WorkoutSession): number {
   if (relevant.length === 0) return 0;
   const done = relevant.filter((r) => r.completed).length;
   return Math.round((done / relevant.length) * 100);
+}
+
+/* ------------------------------------------------------------------ */
+/* Trends                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface TrendPoint {
+  date: string;
+  value: number;
+}
+
+function byDate(sessions: WorkoutSession[]): WorkoutSession[] {
+  return [...sessions].sort((a, b) =>
+    `${a.date}${a.startedAt}`.localeCompare(`${b.date}${b.startedAt}`),
+  );
+}
+
+/** Mean RIR per completed session. Sessions with no RIR logged are left out. */
+export function rirTrend(sessions: WorkoutSession[]): TrendPoint[] {
+  const out: TrendPoint[] = [];
+  for (const session of byDate(completedSessions(sessions))) {
+    const values = session.results
+      .flatMap(workingSetsOf)
+      .map((s) => s.rir)
+      .filter((v): v is number => typeof v === 'number');
+    if (values.length === 0) continue;
+    out.push({
+      date: session.date,
+      value: round1(values.reduce((a, b) => a + b, 0) / values.length),
+    });
+  }
+  return out;
+}
+
+/** Active workout minutes per completed session, against the 45-55 min target. */
+export function durationTrend(sessions: WorkoutSession[]): TrendPoint[] {
+  return byDate(completedSessions(sessions))
+    .filter((s) => s.elapsedSeconds > 0)
+    .map((s) => ({ date: s.date, value: round1(s.elapsedSeconds / 60) }));
+}
+
+/**
+ * Rolling mean bodyweight over a trailing window ending at each weigh-in, which
+ * smooths the day-to-day water swings that make raw readings unreadable.
+ */
+export function bodyweightRollingAverage(sessions: WorkoutSession[], days = 7): TrendPoint[] {
+  const points = byDate(sessions)
+    .filter((s) => typeof s.bodyweight === 'number')
+    .map((s) => ({ date: s.date, weight: s.bodyweight as number }));
+  const windowMs = days * 24 * 60 * 60 * 1000;
+  return points.map((point, i) => {
+    const end = Date.parse(point.date);
+    const inWindow = points
+      .slice(0, i + 1)
+      .filter((p) => end - Date.parse(p.date) < windowMs)
+      .map((p) => p.weight);
+    return {
+      date: point.date,
+      value: round1(inWindow.reduce((a, b) => a + b, 0) / inWindow.length),
+    };
+  });
 }
 
 export function planProgressLabel(plan: WorkoutPlan): string {

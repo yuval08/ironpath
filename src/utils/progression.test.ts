@@ -6,7 +6,9 @@ import {
   recommendationFor,
   suggestStartWeight,
 } from './progression';
-import { makeResult, makeSession } from '@/test/factories';
+import { makePlan, makeResult, makeSession } from '@/test/factories';
+import { SCHEMA_VERSION } from '@/types';
+import type { ExercisePrescription, ProgressionSuggestion, SetResult, WorkoutPlan } from '@/types';
 
 describe('isSuccessfulResult', () => {
   it('accepts a clean, complete, low-pain, low-RPE result', () => {
@@ -181,5 +183,230 @@ describe('substitution and dismissal handling (regression)', () => {
       status: 'dismissed' as const,
     }));
     expect(detectProgressions(sessions, dismissed)).toHaveLength(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Double progression (plan-aware)                                     */
+/* ------------------------------------------------------------------ */
+
+const DOUBLE_PRESC: ExercisePrescription = {
+  id: 'presc-incline',
+  exerciseId: 'incline-dumbbell-press',
+  block: 'A',
+  blockLabel: 'Superset A',
+  order: 1,
+  sets: 3,
+  repsLow: 6,
+  repsHigh: 10,
+  perSide: false,
+  restSeconds: 90,
+  recommendedWeight: 30,
+  entryStyle: 'reps',
+  substitutionIds: [],
+  optional: false,
+  role: 'main',
+  progressionType: 'double',
+  targetRirLow: 1,
+  targetRirHigh: 2,
+  weightIncrement: 2,
+  rampSets: 2,
+};
+
+function doublePlan(prescriptions = [DOUBLE_PRESC]): WorkoutPlan {
+  return makePlan({
+    weeks: [
+      {
+        weekNumber: 1,
+        title: 'Hypertrophy Week 1',
+        focus: 'Upper',
+        guidance: [],
+        phase: 'hypertrophy',
+        blockWeek: 1,
+        days: [
+          {
+            id: 'w1-upperA',
+            weekNumber: 1,
+            weekday: 'monday',
+            dayType: 'upperA',
+            title: 'Upper A',
+            focus: 'Chest',
+            estimatedMinutes: 50,
+            prescriptions,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+const doubleSession = (sets: Partial<SetResult>[], date = '2026-08-03') =>
+  makeSession({
+    date,
+    dayId: 'w1-upperA',
+    completedAt: `${date}T09:00:00.000Z`,
+    startedAt: `${date}T08:00:00.000Z`,
+    results: [
+      makeResult('incline-dumbbell-press', sets, {
+        prescriptionId: 'presc-incline',
+        plannedSets: 3,
+      }),
+    ],
+  });
+
+const topOfRange: Partial<SetResult>[] = [
+  { reps: 10, weight: 30, rir: 2 },
+  { reps: 10, weight: 30, rir: 1 },
+  { reps: 10, weight: 30, rir: 1 },
+];
+
+describe('detectProgressions with a double-progression plan', () => {
+  it('fires after a single qualifying session', () => {
+    const suggestions = detectProgressions([doubleSession(topOfRange)], [], doublePlan());
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]?.exerciseId).toBe('incline-dumbbell-press');
+    expect(suggestions[0]?.kind).toBe('weight');
+    expect(suggestions[0]?.recommendation).toContain('32');
+    expect(suggestions[0]?.reason).toContain('top of the rep range');
+  });
+
+  it('stays silent when the top of the range was missed', () => {
+    const short = [
+      { reps: 10, weight: 30 },
+      { reps: 9, weight: 30 },
+      { reps: 8, weight: 30 },
+    ];
+    expect(detectProgressions([doubleSession(short)], [], doublePlan())).toHaveLength(0);
+  });
+
+  it('ignores ramp sets when checking the working sets', () => {
+    const withRamp = [
+      { reps: 5, weight: 15, isWarmUp: true },
+      { reps: 3, weight: 22, isWarmUp: true },
+      ...topOfRange,
+    ];
+    expect(detectProgressions([doubleSession(withRamp)], [], doublePlan())).toHaveLength(1);
+  });
+
+  it('does not let ramp sets stand in for missing working sets', () => {
+    const rampPadded = [
+      { reps: 10, weight: 30, isWarmUp: true },
+      { reps: 10, weight: 30 },
+      { reps: 10, weight: 30 },
+    ];
+    expect(detectProgressions([doubleSession(rampPadded)], [], doublePlan())).toHaveLength(0);
+  });
+
+  it('falls back to the old two-session heuristic without a plan', () => {
+    expect(detectProgressions([doubleSession(topOfRange)])).toHaveLength(0);
+    expect(
+      detectProgressions([doubleSession(topOfRange), doubleSession(topOfRange, '2026-08-10')]),
+    ).toHaveLength(1);
+  });
+
+  it('recommends a lighter band for a bandAssist prescription', () => {
+    const bandPresc: ExercisePrescription = {
+      ...DOUBLE_PRESC,
+      id: 'presc-pullup',
+      exerciseId: 'band-assisted-pull-up',
+      progressionType: 'bandAssist',
+      weightIncrement: null,
+      recommendedBand: 'medium',
+    };
+    const session = makeSession({
+      dayId: 'w1-upperA',
+      results: [
+        makeResult(
+          'band-assisted-pull-up',
+          [
+            { reps: 10, band: 'medium' },
+            { reps: 10, band: 'medium' },
+            { reps: 10, band: 'medium' },
+          ],
+          { prescriptionId: 'presc-pullup', plannedSets: 3 },
+        ),
+      ],
+    });
+    const [suggestion] = detectProgressions([session], [], doublePlan([bandPresc]));
+    expect(suggestion?.kind).toBe('assistance');
+    expect(suggestion?.recommendation).toMatch(/Light/i);
+  });
+});
+
+describe('re-raising a settled suggestion', () => {
+  const settled = (
+    status: 'accepted' | 'dismissed',
+    detectedAt: string,
+  ): ProgressionSuggestion => ({
+    id: 'sug_old',
+    createdAt: detectedAt,
+    updatedAt: detectedAt,
+    schemaVersion: SCHEMA_VERSION,
+    exerciseId: 'incline-dumbbell-press',
+    exerciseName: 'Incline Dumbbell Press',
+    reason: 'earlier',
+    recommendation: 'earlier',
+    kind: 'weight',
+    status,
+    detectedAt,
+  });
+
+  const plan = doublePlan();
+  const sessions = [doubleSession(topOfRange, '2026-08-10')];
+
+  it('re-raises after an accepted suggestion once a newer session qualifies', () => {
+    expect(
+      detectProgressions(sessions, [settled('accepted', '2026-08-01T00:00:00.000Z')], plan),
+    ).toHaveLength(1);
+  });
+
+  it('re-raises after a dismissed suggestion once a newer session qualifies', () => {
+    expect(
+      detectProgressions(sessions, [settled('dismissed', '2026-08-01T00:00:00.000Z')], plan),
+    ).toHaveLength(1);
+  });
+
+  it('stays silent when the qualifying session predates the settled suggestion', () => {
+    expect(
+      detectProgressions(sessions, [settled('accepted', '2026-09-01T00:00:00.000Z')], plan),
+    ).toHaveLength(0);
+    expect(
+      detectProgressions(sessions, [settled('dismissed', '2026-09-01T00:00:00.000Z')], plan),
+    ).toHaveLength(0);
+  });
+
+  it('never duplicates a suggestion that is still pending', () => {
+    const pending = {
+      ...settled('accepted', '2026-08-01T00:00:00.000Z'),
+      status: 'pending' as const,
+    };
+    expect(detectProgressions(sessions, [pending], plan)).toHaveLength(0);
+  });
+});
+
+describe('warm-up sets are invisible to the old heuristic too', () => {
+  it('counts only the working sets against plannedSets', () => {
+    const result = makeResult(
+      'goblet-squat',
+      [
+        { reps: 5, isWarmUp: true },
+        { reps: 15, rpe: 6 },
+        { reps: 15, rpe: 6 },
+      ],
+      { plannedSets: 2 },
+    );
+    expect(isSuccessfulResult(result)).toBe(true);
+  });
+
+  it('ignores the RPE of a hard ramp set', () => {
+    const result = makeResult(
+      'goblet-squat',
+      [
+        { reps: 3, rpe: 9, isWarmUp: true },
+        { reps: 15, rpe: 6 },
+      ],
+      { plannedSets: 1 },
+    );
+    expect(isSuccessfulResult(result)).toBe(true);
   });
 });

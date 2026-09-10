@@ -4,9 +4,13 @@ import {
   averageKneePain,
   averageRpe,
   averageShoulderPain,
+  bodyweightRollingAverage,
   completionPercent,
   convertWeight,
+  DEFAULT_TOTAL_SESSIONS,
+  durationTrend,
   exerciseReps,
+  exerciseVolume,
   formatDuration,
   maxDurationForExercise,
   maxRepsForExercise,
@@ -14,13 +18,17 @@ import {
   pushUpBreakdown,
   pushUpTotal,
   pushUpTotalForWeek,
+  rirTrend,
   sessionProgress,
   sessionVolume,
   setReps,
   totalRepsForExercise,
+  totalSessionsFor,
   weeklyVolume,
+  workingSetsOf,
 } from './stats';
-import { makePain, makeResult, makeSession } from '@/test/factories';
+import { programFor } from '@/data/programs';
+import { makePain, makePlan, makeResult, makeSession } from '@/test/factories';
 
 describe('painLevel', () => {
   it('maps 0-2 to green, 3-4 to yellow, 5+ to red', () => {
@@ -70,6 +78,7 @@ const emptySet = {
   rpe: null,
   rir: null,
   completed: true,
+  isWarmUp: false,
 };
 
 describe('exerciseReps', () => {
@@ -347,5 +356,183 @@ describe('substitution attribution', () => {
     ];
     expect(maxDurationForExercise(sessions, 'dead-hang')).toBe(0);
     expect(maxDurationForExercise(sessions, 'bear-crawl')).toBe(40);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Ramp sets, plan-derived totals and trends                           */
+/* ------------------------------------------------------------------ */
+
+describe('ramp sets never count', () => {
+  const rampAndWork = () =>
+    makeResult('smith-machine-squat', [
+      { reps: 5, weight: 40, isWarmUp: true },
+      { reps: 3, weight: 60, isWarmUp: true },
+      { reps: 8, weight: 80 },
+      { reps: 8, weight: 80 },
+    ]);
+
+  it('splits working sets out of the result', () => {
+    expect(workingSetsOf(rampAndWork())).toHaveLength(2);
+  });
+
+  it('excludes ramp reps from the rep total', () => {
+    expect(exerciseReps(rampAndWork())).toBe(16);
+  });
+
+  it('excludes ramp tonnage from volume', () => {
+    expect(exerciseVolume(rampAndWork())).toBe(1280);
+    expect(sessionVolume(makeSession({ results: [rampAndWork()] }))).toBe(1280);
+  });
+
+  it('excludes ramp sets from records and totals', () => {
+    const sessions = [makeSession({ results: [rampAndWork()] })];
+    expect(maxRepsForExercise(sessions, 'smith-machine-squat')).toBe(8);
+    expect(totalRepsForExercise(sessions, 'smith-machine-squat')).toBe(16);
+  });
+
+  it('excludes a ramp set RPE from the session average', () => {
+    const session = makeSession({
+      results: [
+        makeResult('smith-machine-squat', [
+          { reps: 3, weight: 60, rpe: 9, isWarmUp: true },
+          { reps: 8, weight: 80, rpe: 7 },
+        ]),
+      ],
+    });
+    expect(averageRpe(session)).toBe(7);
+  });
+
+  it('excludes a ramp hold from the duration record', () => {
+    const sessions = [
+      makeSession({
+        results: [
+          makeResult('dead-hang', [
+            { durationSeconds: 60, isWarmUp: true },
+            { durationSeconds: 30 },
+          ]),
+        ],
+      }),
+    ];
+    expect(maxDurationForExercise(sessions, 'dead-hang')).toBe(30);
+  });
+});
+
+describe('totalSessionsFor', () => {
+  it('counts every day of every stored week', () => {
+    const plan = makePlan();
+    const expected = plan.weeks.reduce((sum, w) => sum + w.days.length, 0);
+    expect(totalSessionsFor(plan)).toBe(expected);
+  });
+
+  it('counts the 15 x 4 hypertrophy block, not the legacy 20', () => {
+    const plan = makePlan({ weeks: programFor('hypertrophy-14wk').buildWeeks() });
+    expect(totalSessionsFor(plan)).toBe(60);
+  });
+
+  it('falls back to the legacy 20 when there is no plan', () => {
+    expect(totalSessionsFor(null)).toBe(DEFAULT_TOTAL_SESSIONS);
+    expect(totalSessionsFor(undefined)).toBe(20);
+  });
+
+  it('drives completionPercent for plans that are not 4x5', () => {
+    const sessions = Array.from({ length: 15 }, () => makeSession());
+    expect(completionPercent(sessions, 60)).toBe(25);
+  });
+});
+
+describe('trends', () => {
+  const session = (over: Parameters<typeof makeSession>[0]) => makeSession(over);
+
+  it('averages RIR per session in date order, skipping sessions with none', () => {
+    const sessions = [
+      session({
+        date: '2026-08-10',
+        startedAt: '2026-08-10T08:00:00.000Z',
+        results: [
+          makeResult('leg-press', [
+            { reps: 8, rir: 1 },
+            { reps: 8, rir: 0 },
+          ]),
+        ],
+      }),
+      session({
+        date: '2026-08-03',
+        startedAt: '2026-08-03T08:00:00.000Z',
+        results: [
+          makeResult('leg-press', [
+            { reps: 8, rir: 3 },
+            { reps: 8, rir: 2 },
+          ]),
+        ],
+      }),
+      session({ date: '2026-08-05', results: [makeResult('leg-press', [{ reps: 8 }])] }),
+    ];
+    expect(rirTrend(sessions)).toEqual([
+      { date: '2026-08-03', value: 2.5 },
+      { date: '2026-08-10', value: 0.5 },
+    ]);
+  });
+
+  it('ignores ramp-set RIR in the trend', () => {
+    const sessions = [
+      session({
+        results: [
+          makeResult('leg-press', [
+            { reps: 3, rir: 5, isWarmUp: true },
+            { reps: 8, rir: 1 },
+          ]),
+        ],
+      }),
+    ];
+    expect(rirTrend(sessions)).toEqual([{ date: '2026-08-03', value: 1 }]);
+  });
+
+  it('reports workout duration in minutes', () => {
+    const sessions = [
+      session({ date: '2026-08-03', elapsedSeconds: 3000 }),
+      session({ date: '2026-08-05', elapsedSeconds: 3300 }),
+      session({ date: '2026-08-07', elapsedSeconds: 0 }),
+    ];
+    expect(durationTrend(sessions)).toEqual([
+      { date: '2026-08-03', value: 50 },
+      { date: '2026-08-05', value: 55 },
+    ]);
+  });
+
+  it('excludes sessions that were never completed from both trends', () => {
+    const abandoned = session({ status: 'abandoned', elapsedSeconds: 600 });
+    expect(durationTrend([abandoned])).toEqual([]);
+    expect(rirTrend([abandoned])).toEqual([]);
+  });
+});
+
+describe('bodyweightRollingAverage', () => {
+  const weighIn = (date: string, bodyweight: number) => makeSession({ date, bodyweight });
+
+  it('averages only the weigh-ins inside the trailing window', () => {
+    const sessions = [
+      weighIn('2026-08-01', 80),
+      weighIn('2026-08-03', 82),
+      weighIn('2026-08-20', 78),
+    ];
+    expect(bodyweightRollingAverage(sessions)).toEqual([
+      { date: '2026-08-01', value: 80 },
+      { date: '2026-08-03', value: 81 },
+      // 17 days later the earlier pair has aged out of the 7-day window.
+      { date: '2026-08-20', value: 78 },
+    ]);
+  });
+
+  it('honours a custom window length', () => {
+    const sessions = [weighIn('2026-08-01', 80), weighIn('2026-08-10', 90)];
+    expect(bodyweightRollingAverage(sessions, 30)).toEqual([
+      { date: '2026-08-01', value: 80 },
+      { date: '2026-08-10', value: 85 },
+    ]);
+  });
+
+  it('skips sessions with no bodyweight recorded', () => {
+    expect(bodyweightRollingAverage([makeSession({ bodyweight: null })])).toEqual([]);
   });
 });

@@ -1,3 +1,9 @@
+/* CSS requires @import to precede every rule, so these sit at the very top:
+   the design tokens below and any rule in this file therefore win ties against
+   workout.css / shell.css — qualify overrides there accordingly. */
+@import './workout.css';
+@import './shell.css';
+
 /* ------------------------------------------------------------------ */
 /* Design tokens                                                       */
 /* ------------------------------------------------------------------ */

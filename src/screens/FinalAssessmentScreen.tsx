@@ -4,7 +4,9 @@ import { useAppData } from '@/state/AppDataProvider';
 import { useToast } from '@/state/ToastProvider';
 import { EXERCISES, exerciseName } from '@/data/exercises';
 import { PainScale } from '@/components/PainScale';
-import { getAssessment, saveAssessment } from '@/db/repository';
+import { getAssessment, saveAssessment, totalSessionsFor } from '@/db/repository';
+import { programFor } from '@/data/programs';
+import { bandName, lastPerformance } from '@/utils/doubleProgression';
 import {
   completedSessions,
   completionPercent,
@@ -18,7 +20,7 @@ import type { FinalAssessment } from '@/types';
 type Draft = Partial<FinalAssessment>;
 
 export default function FinalAssessmentScreen() {
-  const { plan, sessions } = useAppData();
+  const { plan, sessions, settings } = useAppData();
   const { toast } = useToast();
   const [draft, setDraft] = useState<Draft>({});
   const [saved, setSaved] = useState(false);
@@ -34,7 +36,13 @@ export default function FinalAssessmentScreen() {
   }, [plan]);
 
   if (!plan) return null;
-  const done = completedSessions(sessions);
+  // Scoped to the plan being assessed — `sessions` spans every plan on the device.
+  const planSessions = sessions.filter((s) => s.planId === plan.id);
+  const done = completedSessions(planSessions);
+  const total = totalSessionsFor(plan);
+  const percent = completionPercent(planSessions, total);
+  const isResilience = plan.programId === 'movement-resilience';
+  const lastBand = lastPerformance(done, 'band-assisted-pull-up')?.band ?? null;
 
   const num = (v: string) => (v === '' ? null : Number(v));
 
@@ -60,41 +68,71 @@ export default function FinalAssessmentScreen() {
           <h2>Final assessment</h2>
         </div>
         <p className="muted tiny">
-          Complete this at the end of Week 4. Test when you are fresh, keep every rep clean, and
-          stop any test that provokes pain.
+          Complete this at the end of {programFor(plan.programId).name} — week {plan.weeks.length}.
+          Test when you are fresh, keep every rep clean, and stop any test that provokes pain.
+          {!isResilience &&
+            ' This program never prescribes a strict pull-up, so leave that row blank unless you' +
+              ' choose to test it on your own.'}
         </p>
       </div>
 
       <div className="card">
         <div className="card-title">
           <h3>Your logged bests</h3>
-          <span className="pill accent">{completionPercent(sessions)}% complete</span>
+          <span className="pill accent">{percent}% complete</span>
         </div>
+        {/* The resilience block's tests; a hypertrophy plan trains none of them,
+            so its bests come off the assistance ladder instead. */}
         <div className="grid-2">
-          <div className="stat">
-            <div className="value">{maxRepsForExercise(done, 'strict-pull-up')}</div>
-            <div className="label">Pull-up best set</div>
-          </div>
-          <div className="stat">
-            <div className="value">{maxRepsForExercise(done, 'chin-up')}</div>
-            <div className="label">Chin-up best set</div>
-          </div>
-          <div className="stat">
-            <div className="value">{maxRepsForExercise(done, 'standard-push-up')}</div>
-            <div className="label">Push-up best set</div>
-          </div>
-          <div className="stat">
-            <div className="value">{maxDurationForExercise(done, 'dead-hang')}s</div>
-            <div className="label">Dead hang</div>
-          </div>
-          <div className="stat">
-            <div className="value">{maxTreadmillMinutes(done, 'backward-treadmill-walk')}m</div>
-            <div className="label">Backward treadmill</div>
-          </div>
-          <div className="stat">
-            <div className="value">{pushUpTotal(done)}</div>
-            <div className="label">Total push-ups</div>
-          </div>
+          {isResilience ? (
+            <>
+              <div className="stat">
+                <div className="value">{maxRepsForExercise(done, 'strict-pull-up')}</div>
+                <div className="label">Pull-up best set</div>
+              </div>
+              <div className="stat">
+                <div className="value">{maxRepsForExercise(done, 'chin-up')}</div>
+                <div className="label">Chin-up best set</div>
+              </div>
+              <div className="stat">
+                <div className="value">{maxRepsForExercise(done, 'standard-push-up')}</div>
+                <div className="label">Push-up best set</div>
+              </div>
+              <div className="stat">
+                <div className="value">{maxDurationForExercise(done, 'dead-hang')}s</div>
+                <div className="label">Dead hang</div>
+              </div>
+              <div className="stat">
+                <div className="value">{maxTreadmillMinutes(done, 'backward-treadmill-walk')}m</div>
+                <div className="label">Backward treadmill</div>
+              </div>
+              <div className="stat">
+                <div className="value">{pushUpTotal(done)}</div>
+                <div className="label">Total push-ups</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="stat">
+                <div className="value">{maxRepsForExercise(done, 'band-assisted-pull-up')}</div>
+                <div className="label">Assisted pull-up best set</div>
+              </div>
+              <div className="stat">
+                <div className="value" style={{ fontSize: '0.95rem' }}>
+                  {lastBand ? bandName(lastBand, settings?.bandLabels) : '—'}
+                </div>
+                <div className="label">Band reached</div>
+              </div>
+              <div className="stat">
+                <div className="value">{done.length}</div>
+                <div className="label">Sessions completed</div>
+              </div>
+              <div className="stat">
+                <div className="value">{plan.weeks.length}</div>
+                <div className="label">Weeks in the plan</div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -214,7 +252,7 @@ export default function FinalAssessmentScreen() {
 
       <div className="card">
         <label className="field">
-          Ready for the next four-day program?
+          Ready for the next program?
           <select
             value={draft.readyForNextProgram ?? 'unsure'}
             onChange={(e) =>
@@ -250,7 +288,7 @@ export default function FinalAssessmentScreen() {
           </div>
           <ul style={{ paddingLeft: 18, fontSize: '0.88rem', margin: 0 }}>
             <li>
-              Completed {done.length} of 20 sessions ({completionPercent(sessions)}%).
+              Completed {done.length} of {total} sessions ({percent}%).
             </li>
             <li>
               Strict pull-ups: {draft.maxStrictPullUps ?? '—'} · Chin-ups: {draft.maxChinUps ?? '—'}{' '}

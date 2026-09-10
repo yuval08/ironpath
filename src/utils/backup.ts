@@ -1,7 +1,8 @@
 import { format } from 'date-fns';
 import { db } from '@/db/db';
 import { isFutureSchema, migrateAll } from '@/db/migrations';
-import { SCHEMA_VERSION, backupFileSchema, type BackupFile } from '@/types';
+import { SCHEMA_VERSION, backupFileSchema } from '@/types';
+import type { BackupFile, UserSettings, WorkoutPlan } from '@/types';
 import { triggerDownload } from './excelExport';
 
 export async function buildBackup(): Promise<BackupFile> {
@@ -17,7 +18,9 @@ export async function buildBackup(): Promise<BackupFile> {
     ]);
 
   return {
-    app: 'movement-resilience',
+    // The app is Ironpath now. `backupFileSchema` still accepts the old literal,
+    // so backups taken before the rename keep importing (see restoreBackup).
+    app: 'ironpath',
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     plans,
@@ -31,7 +34,7 @@ export async function buildBackup(): Promise<BackupFile> {
 }
 
 export function backupFileName(date = new Date()): string {
-  return `movement-resilience-backup-${format(date, 'yyyy-MM-dd')}.json`;
+  return `ironpath-backup-${format(date, 'yyyy-MM-dd')}.json`;
 }
 
 export async function downloadBackup(): Promise<string> {
@@ -47,6 +50,21 @@ export interface RestoreResult {
   sessions: number;
   records: number;
   assessments: number;
+}
+
+/**
+ * A backup can name an `activePlanId` that is not in the file — the plan was deleted
+ * after the pointer was written. Active-plan resolution falls back on its own, but a
+ * dangling pointer in the database is one consumer away from resolving to `undefined`
+ * and stranding the app on "Loading your plan..." with no route to Settings. Restoring
+ * a pointer that cannot resolve buys nothing, so drop it to null, which resolution
+ * already means "use the first non-archived plan".
+ */
+function withResolvableActivePlan(settings: UserSettings[], plans: WorkoutPlan[]): UserSettings[] {
+  const ids = new Set(plans.map((p) => p.id));
+  return settings.map((s) =>
+    s.activePlanId != null && !ids.has(s.activePlanId) ? { ...s, activePlanId: null } : s,
+  );
 }
 
 /** Validates, migrates and replaces all local data with the backup contents. */
@@ -91,10 +109,11 @@ export async function restoreBackup(json: unknown): Promise<RestoreResult> {
         db.assessments.clear(),
         db.importedWeights.clear(),
       ]);
-      await db.plans.bulkPut(migrateAll(data.plans));
+      const plans = migrateAll(data.plans);
+      await db.plans.bulkPut(plans);
       await db.sessions.bulkPut(migrateAll(data.sessions));
       await db.personalRecords.bulkPut(migrateAll(data.personalRecords));
-      await db.settings.bulkPut(migrateAll(data.settings));
+      await db.settings.bulkPut(withResolvableActivePlan(migrateAll(data.settings), plans));
       await db.suggestions.bulkPut(migrateAll(data.suggestions));
       await db.assessments.bulkPut(migrateAll(data.assessments));
       await db.importedWeights.bulkPut(migrateAll(data.importedWeights));

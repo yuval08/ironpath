@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Pencil, PlayCircle } fro
 import { useNavigate } from 'react-router-dom';
 import { useAppData } from '@/state/AppDataProvider';
 import { EXERCISES, exerciseName, getExercise } from '@/data/exercises';
-import { WEEKDAY_LABELS } from '@/data/program';
+import { programFor, WEEKDAY_LABELS } from '@/data/programs';
 import {
   applyResumeChoice,
   createSession,
@@ -13,10 +13,11 @@ import {
 } from '@/db/repository';
 import { Sheet } from '@/components/Sheet';
 import { PauseManager } from '@/components/PauseManager';
+import { BAND_LADDER, bandName, type BandLabels } from '@/utils/doubleProgression';
 import { useToast } from '@/state/ToastProvider';
+import { PlanSwitcher } from './PlanSwitcher';
+import { PhaseBadge } from './PhaseBadge';
 import type { BandResistance, ExercisePrescription, ResumeChoice, WorkoutDay } from '@/types';
-
-const BANDS: BandResistance[] = ['none', 'extraLight', 'light', 'medium', 'heavy', 'extraHeavy'];
 
 export default function PlanScreen() {
   const { plan, settings, sessions } = useAppData();
@@ -28,12 +29,13 @@ export default function PlanScreen() {
 
   if (!plan || !settings) return null;
 
+  const program = programFor(plan.programId);
+
   const applyChoice = async (choice: ResumeChoice) => {
     const labels: Record<ResumeChoice, string> = {
       resume: 'Continue from where you stopped?',
       restartWeek: 'Restart the current week? Sessions logged this week will be deleted.',
-      restartBlock:
-        'Restart the whole four-week block? All logged sessions for this plan will be deleted.',
+      restartBlock: `Restart ${program.name} from Week 1? Every session logged against this plan will be deleted.`,
     };
     if (choice !== 'resume' && !window.confirm(labels[choice])) return;
     await applyResumeChoice(choice);
@@ -42,7 +44,7 @@ export default function PlanScreen() {
         ? 'Continuing where you left off'
         : choice === 'restartWeek'
           ? 'Current week restarted'
-          : 'Four-week block restarted from Week 1',
+          : 'Plan restarted from Week 1',
     );
   };
 
@@ -97,14 +99,21 @@ export default function PlanScreen() {
 
   return (
     <div>
+      <PlanSwitcher />
+
       <div className="card">
         <div className="card-title">
-          <h3>Where do you want to start?</h3>
+          <div style={{ minWidth: 0 }}>
+            <h3>{program.name}</h3>
+            <span className="muted tiny">
+              {plan.weeks.length} weeks · {program.daysPerWeek} days a week · started{' '}
+              {plan.startDate}
+            </span>
+          </div>
         </div>
-        <div className="banner info">
-          <strong>Recommended:</strong> After your trip, restart Week 1 and complete the full
-          four-week block.
-        </div>
+        <p className="muted tiny" style={{ marginTop: 0 }}>
+          {program.description}
+        </p>
         <div className="stack">
           <button className="btn block" onClick={() => void applyChoice('resume')}>
             Resume where you stopped
@@ -112,8 +121,8 @@ export default function PlanScreen() {
           <button className="btn block" onClick={() => void applyChoice('restartWeek')}>
             Restart the current week
           </button>
-          <button className="btn primary block" onClick={() => void applyChoice('restartBlock')}>
-            Restart the full four-week block
+          <button className="btn block" onClick={() => void applyChoice('restartBlock')}>
+            Restart this plan from Week 1
           </button>
         </div>
         <p className="muted tiny" style={{ margin: '10px 0 0' }}>
@@ -133,9 +142,12 @@ export default function PlanScreen() {
               aria-expanded={open}
             >
               {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="name">{week.title}</div>
                 <div className="muted tiny">{week.focus}</div>
+                <div className="week-head-meta">
+                  <PhaseBadge week={week} />
+                </div>
               </div>
               {plan.currentWeek === week.weekNumber && <span className="pill accent">Current</span>}
             </button>
@@ -147,14 +159,19 @@ export default function PlanScreen() {
                     <li key={g}>{g}</li>
                   ))}
                 </ul>
-                <div className="pill">
-                  Push-up goal: {week.pushUpGoalLow}-{week.pushUpGoalHigh} reps this week
-                </div>
+                {/* Only the resilience block sets a weekly push-up goal. */}
+                {week.pushUpGoalLow != null && (
+                  <div className="pill">
+                    Push-up goal: {week.pushUpGoalLow}-{week.pushUpGoalHigh} reps this week
+                  </div>
+                )}
 
                 {week.days.map((day, dayIndex) => {
                   const dayOpen = openDay === day.id;
+                  // Scoped by planId: day ids are minted per program and two plans
+                  // built from the same program share them exactly.
                   const session = sessions.find(
-                    (s) => s.dayId === day.id && s.status === 'completed',
+                    (s) => s.dayId === day.id && s.planId === plan.id && s.status === 'completed',
                   );
                   return (
                     <div key={day.id} style={{ marginTop: 10 }}>
@@ -187,12 +204,20 @@ export default function PlanScreen() {
                             >
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                                  {p.slot && <span className="superset-slot">{p.slot}</span>}
                                   {exerciseName(p.exerciseId)}
                                   {p.optional && <span className="muted tiny"> · optional</span>}
                                 </div>
                                 <div className="muted tiny">
                                   {p.blockLabel} · {p.sets} × {plannedRepsLabel(p)}
-                                  {p.restSeconds ? ` · rest ${p.restSeconds}s` : ''}
+                                  {p.rampSets > 0 ? ` · ${p.rampSets} ramp` : ''}
+                                  {p.restSeconds ? ` · rest ${p.restSeconds}s` : ' · no rest'}
+                                  {p.targetRirLow != null &&
+                                    ` · RIR ${p.targetRirLow}${
+                                      p.targetRirHigh != null && p.targetRirHigh !== p.targetRirLow
+                                        ? `–${p.targetRirHigh}`
+                                        : ''
+                                    }`}
                                 </div>
                               </div>
                               <button
@@ -240,6 +265,7 @@ export default function PlanScreen() {
         {editing && (
           <PrescriptionEditor
             prescription={editing.p}
+            bandLabels={settings.bandLabels}
             onCancel={() => setEditing(null)}
             onSave={(next) => void savePrescription(editing.day, next)}
           />
@@ -251,10 +277,12 @@ export default function PlanScreen() {
 
 function PrescriptionEditor({
   prescription,
+  bandLabels,
   onSave,
   onCancel,
 }: {
   prescription: ExercisePrescription;
+  bandLabels: BandLabels;
   onSave: (next: ExercisePrescription) => void;
   onCancel: () => void;
 }) {
@@ -322,6 +350,43 @@ function PrescriptionEditor({
           />
         </label>
         <label className="field">
+          Ramp sets
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={draft.rampSets}
+            onChange={(e) => setDraft({ ...draft, rampSets: num(e.target.value) ?? 0 })}
+          />
+        </label>
+        <label className="field">
+          Recommended weight
+          <input
+            type="number"
+            inputMode="decimal"
+            value={draft.recommendedWeight ?? ''}
+            onChange={(e) => setDraft({ ...draft, recommendedWeight: num(e.target.value) ?? null })}
+          />
+        </label>
+        <label className="field">
+          Target RIR low
+          <input
+            type="number"
+            inputMode="numeric"
+            value={draft.targetRirLow ?? ''}
+            onChange={(e) => setDraft({ ...draft, targetRirLow: num(e.target.value) ?? null })}
+          />
+        </label>
+        <label className="field">
+          Target RIR high
+          <input
+            type="number"
+            inputMode="numeric"
+            value={draft.targetRirHigh ?? ''}
+            onChange={(e) => setDraft({ ...draft, targetRirHigh: num(e.target.value) ?? null })}
+          />
+        </label>
+        <label className="field">
           Hold low (s)
           <input
             type="number"
@@ -349,12 +414,13 @@ function PrescriptionEditor({
           />
         </label>
         <label className="field">
-          Recommended weight
+          Load step (kg)
           <input
             type="number"
             inputMode="decimal"
-            value={draft.recommendedWeight ?? ''}
-            onChange={(e) => setDraft({ ...draft, recommendedWeight: num(e.target.value) ?? null })}
+            step={0.5}
+            value={draft.weightIncrement ?? ''}
+            onChange={(e) => setDraft({ ...draft, weightIncrement: num(e.target.value) ?? null })}
           />
         </label>
       </div>
@@ -367,9 +433,9 @@ function PrescriptionEditor({
             setDraft({ ...draft, recommendedBand: e.target.value as BandResistance })
           }
         >
-          {BANDS.map((b) => (
+          {BAND_LADDER.map((b) => (
             <option key={b} value={b}>
-              {b}
+              {bandName(b, bandLabels)}
             </option>
           ))}
         </select>

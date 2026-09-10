@@ -16,7 +16,10 @@ import type {
 
 interface AppData {
   ready: boolean;
+  /** The active plan — what the Dashboard and Workout screens train. */
   plan: WorkoutPlan | undefined;
+  /** Every plan, active and archived, for the plan switcher. */
+  plans: WorkoutPlan[];
   settings: UserSettings | undefined;
   sessions: WorkoutSession[];
   records: PersonalRecord[];
@@ -31,6 +34,7 @@ interface AppData {
 const AppDataContext = createContext<AppData>({
   ready: false,
   plan: undefined,
+  plans: [],
   settings: undefined,
   sessions: [],
   records: [],
@@ -68,16 +72,31 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const plan = useLiveQuery(async () => {
-    const row = await db.plans.toCollection().first();
-    return row ? migrateAll([row])[0] : undefined;
-  }, [seeded]);
+  const plans = useLiveQuery(
+    async () =>
+      migrateAll(await db.plans.toArray()).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [seeded],
+    [] as WorkoutPlan[],
+  );
 
   const settings = useLiveQuery(async () => {
     const row = await db.settings.toCollection().first();
     return row ? migrateAll([row])[0] : undefined;
   }, [seeded]);
 
+  // Same resolution order as repository.getPlan(): the pinned plan, else the first
+  // non-archived one, else whatever exists. Both must agree or a write through the
+  // repository would land on a different plan than the screen is showing.
+  const plan = useMemo(() => {
+    const list = plans ?? [];
+    const pinned = settings?.activePlanId
+      ? list.find((p) => p.id === settings.activePlanId)
+      : undefined;
+    return pinned ?? list.find((p) => !p.archived) ?? list[0];
+  }, [plans, settings?.activePlanId]);
+
+  // Deliberately unfiltered: screens narrow to the active plan themselves, and
+  // export has to emit every plan's history.
   const sessions = useLiveQuery(
     async () =>
       migrateAll(await db.sessions.toArray()).sort((a, b) =>
@@ -115,6 +134,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     () => ({
       ready: seeded && !!plan && !!settings,
       plan,
+      plans: plans ?? [],
       settings,
       sessions: sessions ?? [],
       records: records ?? [],
@@ -127,6 +147,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     [
       seeded,
       plan,
+      plans,
       settings,
       sessions,
       records,

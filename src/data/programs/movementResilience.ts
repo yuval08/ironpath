@@ -1,16 +1,16 @@
 import type { DayType, ExercisePrescription, Weekday, WeekPlan, WorkoutDay } from '@/types';
-import { substitutionsFor } from './substitutions';
+import { substitutionsFor } from '../substitutions';
+import { estimateSessionMinutes, type WarmUpItem } from './timing';
+import type { ProgramDefinition } from './index';
 
 /**
  * ONE canonical five-day template. All four weeks are generated from it by
  * applying per-week progression deltas — there is no duplicated week data.
+ *
+ * This block predates double progression: it advances reps, hold times and
+ * treadmill minutes on a fixed weekly schedule, which is why none of its
+ * prescriptions carry `progressionType: 'double'`.
  */
-
-export interface WarmUpItem {
-  id: string;
-  label: string;
-  exerciseId?: string;
-}
 
 export const WARM_UP: WarmUpItem[] = [
   {
@@ -37,7 +37,15 @@ export const WARM_UP: WarmUpItem[] = [
 
 type TemplateItem = Omit<
   ExercisePrescription,
-  'id' | 'substitutionIds' | 'perSide' | 'optional' | 'recommendedWeight'
+  | 'id'
+  | 'substitutionIds'
+  | 'perSide'
+  | 'optional'
+  | 'recommendedWeight'
+  | 'targetRirLow'
+  | 'targetRirHigh'
+  | 'weightIncrement'
+  | 'rampSets'
 > & {
   perSide?: boolean;
   optional?: boolean;
@@ -57,59 +65,6 @@ interface DayTemplate {
   title: string;
   focus: string;
   items: TemplateItem[];
-}
-
-const SECONDS_PER_REP = 3;
-/** Walking to the rack, setting a band, changing the treadmill direction. */
-const TRANSITION_SECONDS = 30;
-
-function workSeconds(p: ExercisePrescription): number {
-  const sides = p.perSide ? 2 : 1;
-  if (p.minutes != null) return p.minutes * 60;
-  if (p.durationSecondsHigh != null) return p.durationSecondsHigh * sides;
-  if (p.entryStyle === 'stepsPerDirection') return (p.repsHigh ?? 12) * 1.5 * 2;
-  if (p.repsHigh != null) return p.repsHigh * SECONDS_PER_REP * sides;
-  return 30;
-}
-
-/**
- * Splits a day into the units actually performed back-to-back: a run of
- * prescriptions chained by `restSeconds: 0` inside one block. Rest only happens
- * at the end of a superset, so grouping drives the whole time estimate.
- */
-function supersetGroups(prescriptions: ExercisePrescription[]): ExercisePrescription[][] {
-  const groups: ExercisePrescription[][] = [];
-  let current: ExercisePrescription[] = [];
-  for (const p of prescriptions) {
-    const previous = current[current.length - 1];
-    if (previous && previous.blockLabel !== p.blockLabel) {
-      groups.push(current);
-      current = [];
-    }
-    current.push(p);
-    if (p.restSeconds > 0) {
-      groups.push(current);
-      current = [];
-    }
-  }
-  if (current.length > 0) groups.push(current);
-  return groups;
-}
-
-/**
- * Estimated session length at the TOP of every rep range — the worst case.
- * Excludes the warm-up, which is tracked separately and does not count toward
- * the ~60 minute target.
- */
-export function estimateSessionMinutes(prescriptions: ExercisePrescription[]): number {
-  let seconds = 0;
-  for (const group of supersetGroups(prescriptions)) {
-    const rounds = Math.max(...group.map((p) => p.sets));
-    const perRound = group.reduce((sum, p) => sum + workSeconds(p), 0);
-    const rest = group.reduce((sum, p) => sum + p.restSeconds, 0);
-    seconds += rounds * (perRound + rest) + TRANSITION_SECONDS * group.length;
-  }
-  return Math.round(seconds / 60);
 }
 
 const REST = {
@@ -135,6 +90,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'skill',
         blockLabel: 'Skill Block',
         order: 1,
+        role: 'prep',
+        progressionType: 'reps',
         sets: 2,
         repsLow: 6,
         repsHigh: 10,
@@ -148,6 +105,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'skill',
         blockLabel: 'Skill Block',
         order: 2,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 1,
         repsHigh: 3,
@@ -161,6 +120,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'skill',
         blockLabel: 'Skill Block',
         order: 3,
+        role: 'main',
+        progressionType: 'reps',
         sets: 2,
         repsLow: 2,
         repsHigh: 4,
@@ -175,6 +136,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 4,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 4,
         repsHigh: 8,
@@ -188,6 +151,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 5,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 15,
         repsHigh: 20,
@@ -200,6 +165,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 6,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 10,
         repsHigh: 20,
@@ -213,6 +180,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 7,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 12,
         repsHigh: 15,
@@ -226,6 +195,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 8,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 12,
         repsHigh: 15,
@@ -237,6 +208,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 9,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 3,
         durationSecondsLow: 20,
         durationSecondsHigh: 45,
@@ -249,6 +222,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'finisher',
         blockLabel: 'Finisher',
         order: 10,
+        role: 'finisher',
+        progressionType: 'time',
         sets: 1,
         minutes: 8,
         restSeconds: 0,
@@ -272,6 +247,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 1,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 10,
         repsHigh: 12,
@@ -286,6 +263,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 2,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 12,
         repsHigh: 15,
@@ -299,6 +278,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 3,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 15,
         repsHigh: 20,
@@ -311,6 +292,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 4,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 15,
         repsHigh: 20,
@@ -325,6 +308,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 5,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 8,
         repsHigh: 12,
@@ -338,6 +323,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 6,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 3,
         durationSecondsLow: 30,
         durationSecondsHigh: 45,
@@ -351,6 +338,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'D',
         blockLabel: 'Optional Tri-Set D',
         order: 7,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 2,
         repsLow: 15,
         repsHigh: 20,
@@ -363,6 +352,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'D',
         blockLabel: 'Optional Tri-Set D',
         order: 8,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 2,
         repsLow: 15,
         repsHigh: 20,
@@ -375,6 +366,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'D',
         blockLabel: 'Optional Tri-Set D',
         order: 9,
+        role: 'prep',
+        progressionType: 'fixed',
         sets: 2,
         repsLow: 10,
         repsHigh: 10,
@@ -388,6 +381,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'finisher',
         blockLabel: 'Finisher',
         order: 10,
+        role: 'finisher',
+        progressionType: 'time',
         sets: 1,
         minutes: 10,
         restSeconds: 0,
@@ -409,6 +404,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'section1',
         blockLabel: 'Section 1 — Easy Cardio',
         order: 1,
+        role: 'prep',
+        progressionType: 'time',
         sets: 1,
         minutes: 15,
         restSeconds: 0,
@@ -421,6 +418,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 2,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 2,
         repsLow: 5,
         repsHigh: 5,
@@ -434,6 +433,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 3,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 2,
         repsLow: 10,
         repsHigh: 12,
@@ -445,6 +446,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 4,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 2,
         repsLow: 8,
         repsHigh: 8,
@@ -457,6 +460,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 5,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 2,
         repsLow: 8,
         repsHigh: 10,
@@ -468,6 +473,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 6,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 2,
         durationSecondsLow: 30,
         durationSecondsHigh: 30,
@@ -480,6 +487,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 7,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 2,
         repsLow: 5,
         repsHigh: 5,
@@ -492,6 +501,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 8,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 2,
         repsLow: 10,
         repsHigh: 15,
@@ -504,6 +515,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'flow',
         blockLabel: 'Mobility Flow — 2 rounds',
         order: 9,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 2,
         durationSecondsLow: 20,
         durationSecondsHigh: 30,
@@ -516,6 +529,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'circuit',
         blockLabel: 'Movement & Balance Circuit — 3 rounds',
         order: 10,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 3,
         durationSecondsLow: 20,
         durationSecondsHigh: 30,
@@ -528,6 +543,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'circuit',
         blockLabel: 'Movement & Balance Circuit — 3 rounds',
         order: 11,
+        role: 'accessory',
+        progressionType: 'fixed',
         sets: 3,
         repsLow: 6,
         repsHigh: 8,
@@ -540,6 +557,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'circuit',
         blockLabel: 'Movement & Balance Circuit — 3 rounds',
         order: 12,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 3,
         durationSecondsLow: 20,
         durationSecondsHigh: 40,
@@ -552,6 +571,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'circuit',
         blockLabel: 'Movement & Balance Circuit — 3 rounds',
         order: 13,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 3,
         durationSecondsLow: 30,
         durationSecondsHigh: 45,
@@ -565,6 +586,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'finisher',
         blockLabel: 'Optional Finisher',
         order: 14,
+        role: 'finisher',
+        progressionType: 'time',
         sets: 1,
         minutes: 7,
         restSeconds: 0,
@@ -587,6 +610,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'skill',
         blockLabel: 'Skill Block',
         order: 1,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 1,
         repsHigh: 5,
@@ -599,6 +624,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'skill',
         blockLabel: 'Skill Block',
         order: 2,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 1,
         repsHigh: 1,
@@ -613,6 +640,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'skill',
         blockLabel: 'Skill Block',
         order: 3,
+        role: 'main',
+        progressionType: 'reps',
         sets: 2,
         repsLow: 2,
         repsHigh: 3,
@@ -625,6 +654,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 4,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 8,
         repsHigh: 15,
@@ -638,6 +669,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 5,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 15,
         repsHigh: 25,
@@ -650,6 +683,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 6,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 10,
         repsHigh: 15,
@@ -662,6 +697,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 7,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 6,
         repsHigh: 12,
@@ -674,6 +711,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 8,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 12,
         repsHigh: 20,
@@ -687,6 +726,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 9,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 3,
         durationSecondsLow: 30,
         durationSecondsHigh: 45,
@@ -699,6 +740,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'finisher',
         blockLabel: 'Finisher',
         order: 10,
+        role: 'finisher',
+        progressionType: 'time',
         sets: 1,
         minutes: 8,
         restSeconds: 0,
@@ -721,6 +764,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 1,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 12,
         repsHigh: 15,
@@ -734,6 +779,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'A',
         blockLabel: 'Superset A',
         order: 2,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 15,
         repsHigh: 25,
@@ -746,6 +793,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 3,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 8,
         repsHigh: 12,
@@ -759,6 +808,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'B',
         blockLabel: 'Superset B',
         order: 4,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 12,
         repsHigh: 15,
@@ -772,6 +823,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 5,
+        role: 'main',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 12,
         repsHigh: 20,
@@ -783,6 +836,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'C',
         blockLabel: 'Superset C',
         order: 6,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 3,
         repsLow: 10,
         repsHigh: 15,
@@ -796,6 +851,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'D',
         blockLabel: 'Tri-Set D — 2 rounds',
         order: 7,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 2,
         repsLow: 8,
         repsHigh: 12,
@@ -807,6 +864,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'D',
         blockLabel: 'Tri-Set D — 2 rounds',
         order: 8,
+        role: 'accessory',
+        progressionType: 'reps',
         sets: 2,
         repsLow: 15,
         repsHigh: 20,
@@ -818,6 +877,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'D',
         blockLabel: 'Tri-Set D — 2 rounds',
         order: 9,
+        role: 'accessory',
+        progressionType: 'time',
         sets: 2,
         durationSecondsLow: 30,
         durationSecondsHigh: 30,
@@ -830,6 +891,8 @@ export const DAY_TEMPLATES: DayTemplate[] = [
         block: 'finisher',
         blockLabel: 'Finisher',
         order: 10,
+        role: 'finisher',
+        progressionType: 'time',
         sets: 1,
         minutes: 10,
         restSeconds: 0,
@@ -925,6 +988,11 @@ export function buildWorkoutDay(template: DayTemplate, weekNumber: number): Work
       optional: item.optional ?? false,
       recommendedWeight: item.recommendedWeight ?? null,
       substitutionIds: substitutionsFor(item.exerciseId),
+      // This block prescribes reps and holds, never a target RIR or a load step.
+      targetRirLow: null,
+      targetRirHigh: null,
+      weightIncrement: null,
+      rampSets: 0,
     } satisfies ExercisePrescription;
   });
 
@@ -949,6 +1017,8 @@ export function buildWeeks(): WeekPlan[] {
       title: meta.title,
       focus: meta.focus,
       guidance: meta.guidance,
+      phase: 'base',
+      blockWeek: null,
       pushUpGoalLow: meta.pushUpGoalLow,
       pushUpGoalHigh: meta.pushUpGoalHigh,
       days: DAY_TEMPLATES.map((t) => buildWorkoutDay(t, weekNumber)),
@@ -979,3 +1049,16 @@ export const PUSH_UP_EXERCISE_IDS = [
   'pike-push-up',
   'pike-push-up-elevated',
 ];
+
+export const movementResilienceProgram: ProgramDefinition = {
+  id: 'movement-resilience',
+  name: 'Movement & Joint Resilience',
+  shortName: 'Resilience 4',
+  description:
+    'A four-week joint-first block: pull-up skill practice, push-up volume, single-leg work and a dedicated mobility day. Progresses reps, hold times and treadmill minutes rather than load.',
+  weekCount: WEEK_META.length,
+  daysPerWeek: DAY_TEMPLATES.length,
+  warmUp: WARM_UP,
+  dayLabels: DAY_LABELS,
+  buildWeeks,
+};

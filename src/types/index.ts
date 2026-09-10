@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Bumped whenever the persisted shape changes; see src/db/migrations.ts. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /* ------------------------------------------------------------------ */
 /* Primitives                                                          */
@@ -26,6 +26,20 @@ export type Weekday = z.infer<typeof weekdaySchema>;
 
 export const dayTypeSchema = z.enum(['upperA', 'lowerA', 'mobility', 'upperB', 'lowerB']);
 export type DayType = z.infer<typeof dayTypeSchema>;
+
+/** Every program the app can instantiate a plan from; see src/data/programs. */
+export const programIdSchema = z.enum(['movement-resilience', 'hypertrophy-14wk']);
+export type ProgramId = z.infer<typeof programIdSchema>;
+
+/** What a week is for — drives set scaling and the guidance copy. */
+export const weekPhaseSchema = z.enum(['base', 'reload', 'hypertrophy', 'deload']);
+export type WeekPhase = z.infer<typeof weekPhaseSchema>;
+
+export const exerciseRoleSchema = z.enum(['prep', 'main', 'accessory', 'finisher']);
+export type ExerciseRole = z.infer<typeof exerciseRoleSchema>;
+
+export const progressionTypeSchema = z.enum(['double', 'bandAssist', 'reps', 'time', 'fixed']);
+export type ProgressionType = z.infer<typeof progressionTypeSchema>;
 
 /** How a set is entered and displayed. */
 export const entryStyleSchema = z.enum([
@@ -59,6 +73,16 @@ export const bandResistanceSchema = z.enum([
   'extraHeavy',
 ]);
 export type BandResistance = z.infer<typeof bandResistanceSchema>;
+
+/** Fallback names for the assistance bands; the user can rename them in settings. */
+export const DEFAULT_BAND_LABELS: Record<BandResistance, string> = {
+  extraHeavy: 'Extra heavy (most assistance)',
+  heavy: 'Heavy',
+  medium: 'Medium',
+  light: 'Light',
+  extraLight: 'Extra light',
+  none: 'No band (bodyweight)',
+};
 
 export const exerciseCategorySchema = z.enum([
   'pull',
@@ -145,12 +169,24 @@ export const exercisePrescriptionSchema = z.object({
   substitutionIds: z.array(z.string()).default([]),
   videoUrlOverride: z.string().optional(),
   optional: z.boolean().default(false),
+  /** 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' — position inside a superset group. */
+  slot: z.string().optional(),
+  /** Prescriptions sharing this key are performed as one superset. */
+  supersetKey: z.string().optional(),
+  role: exerciseRoleSchema.default('accessory'),
+  progressionType: progressionTypeSchema.default('fixed'),
+  targetRirLow: z.number().nullable().default(null),
+  targetRirHigh: z.number().nullable().default(null),
+  /** Load step suggested when double progression says the top of the range is owned. */
+  weightIncrement: z.number().nullable().default(null),
+  /** Non-working ramp sets logged before the working sets; never counted as volume. */
+  rampSets: z.number().int().default(0),
 });
 export type ExercisePrescription = z.infer<typeof exercisePrescriptionSchema>;
 
 export const workoutDaySchema = z.object({
   id: z.string(),
-  weekNumber: z.number().int().min(1).max(4),
+  weekNumber: z.number().int().min(1).max(52),
   weekday: weekdaySchema,
   dayType: dayTypeSchema,
   title: z.string(),
@@ -161,12 +197,15 @@ export const workoutDaySchema = z.object({
 export type WorkoutDay = z.infer<typeof workoutDaySchema>;
 
 export const weekPlanSchema = z.object({
-  weekNumber: z.number().int().min(1).max(4),
+  weekNumber: z.number().int().min(1).max(52),
   title: z.string(),
   focus: z.string(),
   guidance: z.array(z.string()),
-  pushUpGoalLow: z.number().int(),
-  pushUpGoalHigh: z.number().int(),
+  phase: weekPhaseSchema.default('base'),
+  /** 1..12 inside the hypertrophy block; null for reload/deload/base weeks. */
+  blockWeek: z.number().int().nullable().default(null),
+  pushUpGoalLow: z.number().int().optional(),
+  pushUpGoalHigh: z.number().int().optional(),
   days: z.array(workoutDaySchema),
 });
 export type WeekPlan = z.infer<typeof weekPlanSchema>;
@@ -183,8 +222,8 @@ export type PausePeriod = z.infer<typeof pausePeriodSchema>;
 export const workoutPlanSchema = entityBase.extend({
   name: z.string(),
   startDate: z.string(),
-  /** Week the user is currently on (1-4). */
-  currentWeek: z.number().int().min(1).max(4),
+  /** Week the user is currently on; upper bound is the program's week count. */
+  currentWeek: z.number().int().min(1),
   /** Index into the week's days array. */
   currentDayIndex: z.number().int().min(0),
   weeks: z.array(weekPlanSchema),
@@ -192,6 +231,8 @@ export const workoutPlanSchema = entityBase.extend({
   /** Number of times the block has been restarted from week 1. */
   restartCount: z.number().int().default(0),
   completedAt: z.string().nullable().default(null),
+  programId: programIdSchema.default('movement-resilience'),
+  archived: z.boolean().default(false),
 });
 export type WorkoutPlan = z.infer<typeof workoutPlanSchema>;
 
@@ -214,6 +255,8 @@ export const setResultSchema = z.object({
   rpe: z.number().nullable().default(null),
   rir: z.number().nullable().default(null),
   completed: z.boolean().default(false),
+  /** Ramp/warm-up set: shown separately, excluded from volume and progression. */
+  isWarmUp: z.boolean().default(false),
 });
 export type SetResult = z.infer<typeof setResultSchema>;
 
@@ -319,6 +362,9 @@ export const userSettingsSchema = entityBase.extend({
   videoOverrides: z.record(z.string(), videoReferenceSchema).default({}),
   weightOverrides: z.record(z.string(), z.number()).default({}),
   autoCollapseCompleted: z.boolean().default(true),
+  /** Which plan the app is currently training; null resolves to the first non-archived plan. */
+  activePlanId: z.string().nullable().default(null),
+  bandLabels: z.record(bandResistanceSchema, z.string()).default(DEFAULT_BAND_LABELS),
 });
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 
@@ -366,7 +412,8 @@ export const importedWeightSchema = entityBase.extend({
 export type ImportedWeight = z.infer<typeof importedWeightSchema>;
 
 export const backupFileSchema = z.object({
-  app: z.literal('movement-resilience'),
+  // New exports write 'ironpath'; backups made before the rename still import.
+  app: z.union([z.literal('movement-resilience'), z.literal('ironpath')]),
   schemaVersion: z.number().int(),
   exportedAt: z.string(),
   plans: z.array(workoutPlanSchema),

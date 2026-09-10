@@ -7,6 +7,8 @@ import { ConfirmButton, Sheet } from '@/components/Sheet';
 import { EXERCISES } from '@/data/exercises';
 import { getVideo } from '@/data/exerciseVideos';
 import { REST_PRESETS } from '@/hooks/useTimers';
+import { PlanSwitcher } from './PlanSwitcher';
+import { BandLabelEditor } from './BandLabelEditor';
 import {
   applyResumeChoice,
   deleteAllData,
@@ -22,7 +24,7 @@ import { storageEstimate } from '@/db/db';
 import type { ThemeMode, VideoReference, WeightUnit } from '@/types';
 
 export default function SettingsScreen() {
-  const { plan, settings, sessions, records, storagePersisted } = useAppData();
+  const { plan, plans, settings, sessions, records, storagePersisted } = useAppData();
   const { toast } = useToast();
   const navigate = useNavigate();
   const jsonInput = useRef<HTMLInputElement>(null);
@@ -40,7 +42,10 @@ export default function SettingsScreen() {
     setBusy(true);
     try {
       const assessment = await getAssessment(plan.id);
-      const name = await downloadExcel({ plan, sessions, records, settings, assessment });
+      // `plans`, not just the active one: the whole point of the multi-plan work is
+      // that the old resilience history survives, and an export that quietly omitted
+      // it would undercut that.
+      const name = await downloadExcel({ plan, plans, sessions, records, settings, assessment });
       toast(`Exported ${name}`);
     } catch (error) {
       toast(`Export failed: ${(error as Error).message}`);
@@ -61,6 +66,8 @@ export default function SettingsScreen() {
 
   return (
     <div>
+      <PlanSwitcher />
+
       <div className="card">
         <div className="card-title">
           <h3>Profile</h3>
@@ -159,6 +166,8 @@ export default function SettingsScreen() {
         </div>
       </div>
 
+      <BandLabelEditor />
+
       <div className="card">
         <div className="card-title">
           <div className="row tight">
@@ -180,6 +189,12 @@ export default function SettingsScreen() {
         <div className="card-title">
           <h3>Export &amp; backup</h3>
         </div>
+        <p className="muted tiny" style={{ marginTop: 0 }}>
+          Both files cover every plan on this device, not just the one you are training. The Excel
+          workbook includes a <strong>Sets</strong> sheet (one row per logged set, ramp sets marked
+          as such) and a <strong>Sessions</strong> sheet (duration, volume, average RPE and RIR,
+          bodyweight, and the before/after pain entries).
+        </p>
         <div className="stack">
           <button className="btn primary block" disabled={busy} onClick={() => void exportExcel()}>
             <FileSpreadsheet size={17} /> Export workout history to Excel
@@ -281,8 +296,8 @@ export default function SettingsScreen() {
           />
           <ConfirmButton
             className="btn block"
-            label="Reset full four-week plan"
-            confirmLabel="Delete all sessions and restart at Week 1?"
+            label="Restart the active plan"
+            confirmLabel="Delete every session logged against the active plan and restart at Week 1?"
             onConfirm={() => {
               void applyResumeChoice('restartBlock').then(() => toast('Plan restarted at Week 1'));
             }}

@@ -21,9 +21,10 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
       manifest: {
-        name: 'Movement & Joint Resilience',
-        short_name: 'Resilience',
-        description: 'Four-week movement and joint resilience training tracker',
+        name: 'Ironpath',
+        short_name: 'Ironpath',
+        description:
+          'Multi-program strength training tracker — hypertrophy and joint resilience blocks, fully offline.',
         theme_color: '#0f766e',
         background_color: '#0b1220',
         display: 'standalone',

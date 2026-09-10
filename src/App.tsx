@@ -18,7 +18,7 @@ import PullUpScreen from './screens/PullUpScreen';
 
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
-  '/plan': 'Four-Week Plan',
+  '/plan': 'Your Plan',
   '/workout': "Today's Workout",
   '/library': 'Exercise Library',
   '/progress': 'Progress',
@@ -26,7 +26,7 @@ const TITLES: Record<string, string> = {
   '/settings': 'Settings & Backup',
   '/import': 'Import Excel',
   '/assessment': 'Final Assessment',
-  '/pull-ups': 'Pull-Up Goal',
+  '/pull-ups': 'Pull-Ups',
 };
 
 export default function App() {
@@ -38,7 +38,7 @@ export default function App() {
   const title =
     TITLES[location.pathname] ??
     TITLES[`/${location.pathname.split('/')[1] ?? ''}`] ??
-    'Movement & Joint Resilience';
+    'Ironpath';
 
   return (
     <div className="app">

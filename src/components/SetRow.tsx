@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Check } from 'lucide-react';
 import type { EntryStyle, LoadType, SetResult } from '@/types';
 
@@ -7,6 +8,9 @@ interface FieldSpec {
   step?: number;
   placeholder?: string;
 }
+
+/** Which effort scale the exercise is logged against. */
+export type EffortField = 'rpe' | 'rir';
 
 /**
  * Which inputs a set shows. Driven by how the exercise is measured AND whether it
@@ -26,34 +30,45 @@ export function fieldsFor(
   entryStyle: EntryStyle,
   weightLabel: string,
   loadType: LoadType = 'dumbbell',
+  effort: EffortField = 'rpe',
 ): FieldSpec[] {
   const loaded = canBeLoaded(loadType);
   const weight: FieldSpec = { key: 'weight', label: weightLabel, step: 0.5, placeholder: 'wt' };
   const rpe: FieldSpec = { key: 'rpe', label: 'RPE', step: 0.5, placeholder: 'rpe' };
   const rir: FieldSpec = { key: 'rir', label: 'RIR', placeholder: 'rir' };
+  // A loaded set used to lose its effort column to the weight box, which made the
+  // whole hypertrophy program — prescribed in RIR — impossible to record.
+  const effortField = effort === 'rir' ? rir : rpe;
 
   switch (entryStyle) {
     case 'reps':
       return loaded
-        ? [weight, { key: 'reps', label: 'Reps', placeholder: 'reps' }, rpe]
+        ? [weight, { key: 'reps', label: 'Reps', placeholder: 'reps' }, effortField]
         : [{ key: 'reps', label: 'Reps', placeholder: 'reps' }, rpe, rir];
     case 'repsPerSide':
-      return [
-        { key: 'repsLeft', label: 'Left', placeholder: 'L' },
-        { key: 'repsRight', label: 'Right', placeholder: 'R' },
-        loaded ? weight : rpe,
-      ];
+      return loaded
+        ? [
+            { key: 'repsLeft', label: 'Left', placeholder: 'L' },
+            { key: 'repsRight', label: 'Right', placeholder: 'R' },
+            weight,
+            effortField,
+          ]
+        : [
+            { key: 'repsLeft', label: 'Left', placeholder: 'L' },
+            { key: 'repsRight', label: 'Right', placeholder: 'R' },
+            effortField,
+          ];
     case 'time':
       return loaded
-        ? [{ key: 'durationSeconds', label: 'Seconds', placeholder: 'sec' }, weight, rpe]
+        ? [{ key: 'durationSeconds', label: 'Seconds', placeholder: 'sec' }, weight, effortField]
         : [{ key: 'durationSeconds', label: 'Seconds', placeholder: 'sec' }, rpe, rir];
     case 'timePerSide':
       return loaded
-        ? [{ key: 'durationSeconds', label: 'Sec / side', placeholder: 'sec' }, weight, rpe]
+        ? [{ key: 'durationSeconds', label: 'Sec / side', placeholder: 'sec' }, weight, effortField]
         : [{ key: 'durationSeconds', label: 'Sec / side', placeholder: 'sec' }, rpe, rir];
     case 'distance':
       return loaded
-        ? [{ key: 'distanceMeters', label: 'Metres', placeholder: 'm' }, weight, rpe]
+        ? [{ key: 'distanceMeters', label: 'Metres', placeholder: 'm' }, weight, effortField]
         : [{ key: 'distanceMeters', label: 'Metres', placeholder: 'm' }, rpe, rir];
     case 'stepsPerDirection':
       return [
@@ -77,7 +92,11 @@ export function SetRow({
   entryStyle,
   weightLabel,
   loadType,
+  effort = 'rpe',
   showLabels,
+  label,
+  labelFull,
+  muted = false,
   onChange,
   onToggle,
 }: {
@@ -85,16 +104,31 @@ export function SetRow({
   entryStyle: EntryStyle;
   weightLabel: string;
   loadType: LoadType;
+  effort?: EffortField;
   showLabels: boolean;
+  /**
+   * Overrides the left gutter. `setNumber` is unique across the whole sets array
+   * — ramp sets take 1..n and working sets continue after them — so the ordinal
+   * the user reads is always the caller's position within its own group.
+   */
+  label?: string;
+  /** Spelled-out form of `label` for screen readers, when the gutter is abbreviated. */
+  labelFull?: string;
+  muted?: boolean;
   onChange: (next: SetResult) => void;
   onToggle: () => void;
 }) {
-  const fields = fieldsFor(entryStyle, weightLabel, loadType);
+  const fields = fieldsFor(entryStyle, weightLabel, loadType, effort);
+  const gutter = label ?? `${set.setNumber}`;
+  const spoken = labelFull ?? gutter;
+  // The column count is data-driven so a fourth input (per-side + load + effort)
+  // reflows instead of overflowing a 360px phone.
+  const columns = { '--set-cols': fields.length } as CSSProperties;
 
   return (
     <>
       {showLabels && (
-        <div className="set-row" aria-hidden>
+        <div className="set-row" style={columns} aria-hidden>
           <span />
           {fields.map((f) => (
             <span key={f.key} className="muted tiny" style={{ textAlign: 'center' }}>
@@ -104,8 +138,8 @@ export function SetRow({
           <span />
         </div>
       )}
-      <div className="set-row">
-        <span className="set-no">{set.setNumber}</span>
+      <div className={`set-row ${muted ? 'ramp' : ''}`} style={columns}>
+        <span className="set-no">{gutter}</span>
         {fields.map((f) => (
           <input
             key={f.key}
@@ -113,7 +147,7 @@ export function SetRow({
             inputMode="decimal"
             step={f.step ?? 1}
             min={0}
-            aria-label={`Set ${set.setNumber} ${f.label}`}
+            aria-label={`Set ${spoken} ${f.label}`}
             placeholder={f.placeholder}
             value={(set[f.key] as number | null) ?? ''}
             onChange={(e) => {
@@ -126,7 +160,7 @@ export function SetRow({
         <button
           type="button"
           className={`check-btn ${set.completed ? 'on' : ''}`}
-          aria-label={`Mark set ${set.setNumber} ${set.completed ? 'incomplete' : 'complete'}`}
+          aria-label={`Mark set ${spoken} ${set.completed ? 'incomplete' : 'complete'}`}
           aria-pressed={set.completed}
           onClick={onToggle}
         >

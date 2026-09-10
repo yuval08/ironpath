@@ -1,0 +1,119 @@
+/* ------------------------------------------------------------------ */
+/* Workout screen styles — supersets, ramp sets, set entry, history.   */
+/* Owned by the workout-ui agent. Imported from index.css.             */
+/* ------------------------------------------------------------------ */
+
+/* index.css is imported above every rule in it, so its own declarations win a
+   specificity tie — everything that overrides the base workout styles below is
+   qualified to outrank them rather than relying on source order. */
+
+/* --- set entry ---------------------------------------------------- */
+
+/* The column count is data-driven: a per-side exercise that also carries load
+   and an effort score needs four inputs, and a fixed 3-column grid pushed the
+   fourth one off a 360px screen. */
+.exercise-body .set-row {
+  grid-template-columns: 24px repeat(var(--set-cols, 3), minmax(0, 1fr)) 44px;
+  gap: 5px;
+}
+
+.exercise-body .set-row input {
+  padding: 8px 4px;
+  min-width: 0;
+}
+
+/* --- ramp sets ---------------------------------------------------- */
+
+.ramp-block {
+  border-left: 2px dashed var(--border);
+  padding-left: 8px;
+  margin-bottom: 10px;
+}
+
+.ramp-label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* Ramp sets are logged for context only — they read as background, never as
+   part of the x/y the user is working through. */
+.exercise-body .set-row.ramp {
+  opacity: 0.62;
+}
+
+.exercise-body .set-row.ramp input {
+  background: var(--surface-2);
+}
+
+/* --- supersets ---------------------------------------------------- */
+
+.superset {
+  margin-bottom: 6px;
+}
+
+.slot-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  vertical-align: 1px;
+}
+
+/* Shown where the rest timer would have been on a non-final superset slot. */
+.next-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+/* Where a longer exercise stops being paired and finishes as straight sets. */
+.straight-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 7px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.straight-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* --- history + progression ---------------------------------------- */
+
+.history-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 10px;
+  line-height: 1.45;
+}
+
+.progression-banner {
+  margin-top: 2px;
+}
+
+.band-picker {
+  margin-bottom: 10px;
+}
