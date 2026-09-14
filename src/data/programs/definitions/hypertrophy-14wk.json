@@ -1,0 +1,507 @@
+{
+  "id": "hypertrophy-14wk",
+  "name": "14-Week Hypertrophy — Upper / Lower",
+  "shortName": "Hypertrophy 14",
+  "description": "Two reload weeks, twelve hypertrophy weeks and a deload, run as an upper/lower split four days a week. Double progression on load, band progression on the pull-up, no deadlift variations.",
+  "idPrefix": "h14",
+  "timing": {
+    "secondsPerRep": 4,
+    "intraSupersetSeconds": 15
+  },
+  "loadSteps": {
+    "kg": {
+      "dumbbell": 2,
+      "cable": 2.5,
+      "stack": 5,
+      "legPress": 10
+    },
+    "lb": {
+      "dumbbell": 5,
+      "cable": 5,
+      "stack": 10,
+      "legPress": 25
+    }
+  },
+  "warmUp": [],
+  "days": [
+    {
+      "weekday": "monday",
+      "dayType": "upperA",
+      "title": "Upper A — Pull-Up + Chest",
+      "focus": "Vertical pulling, incline pressing, side delts, abs",
+      "blocks": [
+        {
+          "key": "prep",
+          "label": "Prep",
+          "exercises": [
+            {
+              "exercise": "scapular-pull-up",
+              "role": "prep",
+              "progression": "reps",
+              "sets": 2,
+              "reps": [8, 12],
+              "restSeconds": 60,
+              "notes": "Full hang between reps. This primes the pull-up, it is not a working set."
+            }
+          ]
+        },
+        {
+          "key": "A",
+          "label": "Superset A",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "band-assisted-pull-up",
+              "role": "main",
+              "progression": "bandAssist",
+              "sets": 3,
+              "reps": [6, 10],
+              "rir": [1, 2],
+              "band": "medium",
+              "notes": "Progress by moving to a lighter band, never by grinding a rep."
+            },
+            {
+              "exercise": "incline-dumbbell-press",
+              "role": "main",
+              "progression": "double",
+              "sets": 5,
+              "reps": [6, 10],
+              "rir": [1, 2],
+              "loadStep": "dumbbell",
+              "rampSets": 1,
+              "notes": "Only the first 3 sets pair with the pull-up; the last 2 are straight sets with full rest."
+            }
+          ],
+          "restSeconds": 90
+        },
+        {
+          "key": "B",
+          "label": "Superset B",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "chest-supported-row",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [8, 12],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            },
+            {
+              "exercise": "cable-lateral-raise",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [12, 20],
+              "rir": [1, 2],
+              "loadStep": "cable"
+            }
+          ],
+          "restSeconds": 70
+        },
+        {
+          "key": "C",
+          "label": "Rear Delts",
+          "exercises": [
+            {
+              "exercise": "cable-face-pull",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 2,
+              "reps": [12, 20],
+              "rir": [2, 3],
+              "loadStep": "cable",
+              "restSeconds": 60,
+              "notes": "Shoulder health work — keep a rep or two spare, it is not a strength set."
+            }
+          ]
+        },
+        {
+          "key": "finisher",
+          "label": "Finisher",
+          "exercises": [
+            {
+              "exercise": "cable-crunch",
+              "role": "finisher",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "cable",
+              "restSeconds": 45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "weekday": "tuesday",
+      "dayType": "lowerA",
+      "title": "Lower A — Smith Squat",
+      "focus": "Squat pattern, hamstrings, glutes, calves",
+      "blocks": [
+        {
+          "key": "A",
+          "label": "Main Lift",
+          "exercises": [
+            {
+              "exercise": "smith-machine-squat",
+              "role": "main",
+              "progression": "double",
+              "sets": 3,
+              "reps": [6, 10],
+              "rir": [1, 2],
+              "loadStep": "stack",
+              "rampSets": 2,
+              "restSeconds": 135,
+              "notes": "Take full rest. Ramp up in two light sets before the first working set."
+            }
+          ]
+        },
+        {
+          "key": "B",
+          "label": "Superset B",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "seated-leg-curl",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 4,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "stack",
+              "notes": "The only direct hamstring work in the program — do not skip it."
+            },
+            {
+              "exercise": "leg-extension",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            }
+          ],
+          "restSeconds": 85
+        },
+        {
+          "key": "C",
+          "label": "Superset C",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "hip-thrust",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [8, 12],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            },
+            {
+              "exercise": "standing-calf-raise",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            }
+          ],
+          "restSeconds": 90
+        },
+        {
+          "key": "finisher",
+          "label": "Finisher",
+          "exercises": [
+            {
+              "exercise": "tibialis-raise",
+              "role": "finisher",
+              "progression": "reps",
+              "sets": 2,
+              "reps": [15, 20],
+              "restSeconds": 45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "weekday": "thursday",
+      "dayType": "upperB",
+      "title": "Upper B — Pull-Up + Shoulders",
+      "focus": "Vertical pulling, overhead and flat pressing, side delts, abs",
+      "blocks": [
+        {
+          "key": "prep",
+          "label": "Prep",
+          "exercises": [
+            {
+              "exercise": "scapular-pull-up",
+              "role": "prep",
+              "progression": "reps",
+              "sets": 2,
+              "reps": [8, 12],
+              "restSeconds": 60,
+              "notes": "Full hang between reps. This primes the pull-up, it is not a working set."
+            }
+          ]
+        },
+        {
+          "key": "A",
+          "label": "Superset A",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "band-assisted-pull-up",
+              "role": "main",
+              "progression": "bandAssist",
+              "sets": 3,
+              "reps": [6, 10],
+              "rir": [1, 2],
+              "band": "medium",
+              "notes": "Progress by moving to a lighter band, never by grinding a rep."
+            },
+            {
+              "exercise": "seated-dumbbell-shoulder-press",
+              "role": "main",
+              "progression": "double",
+              "sets": 3,
+              "reps": [6, 10],
+              "rir": [1, 2],
+              "loadStep": "dumbbell",
+              "rampSets": 1
+            }
+          ],
+          "restSeconds": 90
+        },
+        {
+          "key": "B",
+          "label": "Superset B",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "neutral-grip-lat-pulldown",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [8, 12],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            },
+            {
+              "exercise": "flat-dumbbell-press",
+              "role": "main",
+              "progression": "double",
+              "sets": 5,
+              "reps": [6, 10],
+              "rir": [1, 2],
+              "loadStep": "dumbbell",
+              "notes": "Only the first 3 sets pair with the pulldown; the last 2 are straight sets with full rest."
+            }
+          ],
+          "restSeconds": 90
+        },
+        {
+          "key": "C",
+          "label": "Side Delts",
+          "exercises": [
+            {
+              "exercise": "cable-lateral-raise",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [12, 20],
+              "rir": [1, 2],
+              "loadStep": "cable",
+              "restSeconds": 60
+            }
+          ]
+        },
+        {
+          "key": "finisher",
+          "label": "Finisher",
+          "exercises": [
+            {
+              "exercise": "captains-chair-leg-raise",
+              "role": "finisher",
+              "progression": "reps",
+              "sets": 3,
+              "reps": [10, 15],
+              "restSeconds": 45,
+              "notes": "Back supported throughout. No hanging leg raises in this program."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "weekday": "friday",
+      "dayType": "lowerB",
+      "title": "Lower B — Leg Press",
+      "focus": "Quad volume, hamstrings, glutes, calves",
+      "blocks": [
+        {
+          "key": "A",
+          "label": "Main Lift",
+          "exercises": [
+            {
+              "exercise": "leg-press",
+              "role": "main",
+              "progression": "double",
+              "sets": 3,
+              "reps": [6, 10],
+              "rir": [1, 2],
+              "loadStep": "legPress",
+              "rampSets": 2,
+              "restSeconds": 135,
+              "notes": "Take full rest. Ramp up in two light sets before the first working set."
+            }
+          ]
+        },
+        {
+          "key": "B",
+          "label": "Superset B",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "supported-split-squat",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 2,
+              "reps": [8, 12],
+              "rir": [2, 2],
+              "loadStep": "dumbbell",
+              "entryStyle": "repsPerSide",
+              "perSide": true,
+              "optional": true,
+              "notes": "Optional. This is the first set to drop if sessions consistently run past 55 minutes — the quad volume survives it. No reverse lunges; swap to a low step-up if the knee objects."
+            },
+            {
+              "exercise": "seated-leg-curl",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 4,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            }
+          ],
+          "restSeconds": 85
+        },
+        {
+          "key": "C",
+          "label": "Superset C",
+          "superset": true,
+          "exercises": [
+            {
+              "exercise": "hip-thrust",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [8, 12],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            },
+            {
+              "exercise": "standing-calf-raise",
+              "role": "accessory",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "stack"
+            }
+          ],
+          "restSeconds": 90
+        },
+        {
+          "key": "finisher",
+          "label": "Finisher",
+          "exercises": [
+            {
+              "exercise": "tibialis-raise",
+              "role": "finisher",
+              "progression": "reps",
+              "sets": 2,
+              "reps": [15, 20],
+              "restSeconds": 45
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "weeks": [
+    {
+      "phase": "reload",
+      "title": "Reload Week 1 — Technique & Load Reintroduction",
+      "focus": "Re-groove the patterns at conservative loads",
+      "guidance": [
+        "Two sets of everything. This week exists to remember the movements, not to test them.",
+        "Stop every working set with 3 reps in reserve (RIR 3).",
+        "Do not reduce band assistance this week even if the reps feel easy.",
+        "Do the general warm-up before you open the app — the session timer covers the lifting only."
+      ],
+      "setCap": {
+        "main": 2,
+        "other": 2
+      },
+      "rir": [3, 3],
+      "rampSets": false
+    },
+    {
+      "phase": "reload",
+      "title": "Reload Week 2 — Establish Starting Loads",
+      "focus": "Find the weights the twelve-week block will build on",
+      "guidance": [
+        "Main lifts return to full sets; accessories stay capped at 3.",
+        "Stop working sets with 2-3 reps in reserve (RIR 2-3).",
+        "This is the week you settle on real starting loads — write down what you used.",
+        "Ramp sets are available again on the Smith squat, leg press and the dumbbell presses."
+      ],
+      "setCap": {
+        "main": null,
+        "other": 3
+      },
+      "rir": [2, 3],
+      "rampSets": true
+    },
+    {
+      "phase": "hypertrophy",
+      "repeat": 12,
+      "title": "Hypertrophy Week {n}",
+      "focus": "Full working volume, progressed by performance",
+      "guidance": [
+        "Full sets. Stop working sets with 1-2 reps in reserve (RIR 1-2); the last set of an isolation exercise may reach RIR 0-1.",
+        "Add load only when every working set hit the TOP of the rep range with good form — the app will tell you when.",
+        "Ramp sets are not counted. Log them if you want the record, skip them if you do not.",
+        "Non-final superset slots have no rest: go straight to the next exercise."
+      ],
+      "setCap": {
+        "main": null,
+        "other": null
+      },
+      "rir": null,
+      "rampSets": true
+    },
+    {
+      "phase": "deload",
+      "title": "Deload Week — Recover & Reset",
+      "focus": "Halve the volume, keep the loads, recover",
+      "guidance": [
+        "Two sets of everything, at the loads you were already using.",
+        "Stop every working set with 3 reps in reserve (RIR 3). Nothing is tested this week.",
+        "The point is to arrive at the next block fresher than you left this one."
+      ],
+      "setCap": {
+        "main": 2,
+        "other": 2
+      },
+      "rir": [3, 3],
+      "rampSets": true
+    }
+  ]
+}

@@ -13,16 +13,13 @@ import {
   WARM_UP,
   buildWeeks as buildResilienceWeeks,
 } from './programs/movementResilience';
-import {
-  dayTemplates as hypertrophyTemplates,
-  buildWeeks as buildHypertrophyWeeks,
-  HYPERTROPHY_TIMING,
-} from './programs/hypertrophy14';
+import hypertrophyJson from './programs/definitions/hypertrophy-14wk.json';
 import { EXERCISE_BY_ID } from './exercises';
 import { plannedRepsLabel } from '@/db/repository';
 
-/** Any step table works for shape assertions; the values are unit-specific. */
-const STEP_SAMPLE = { dumbbell: 5, cable: 5, stack: 10, legPress: 25 };
+const buildHypertrophyWeeks = PROGRAMS['hypertrophy-14wk'].buildWeeks;
+/** The same timing the compiler hands the estimator, read from the program file. */
+const HYPERTROPHY_TIMING = hypertrophyJson.timing;
 
 const weeks = buildResilienceWeeks();
 const hypertrophyWeeks = PROGRAMS['hypertrophy-14wk'].buildWeeks();
@@ -320,7 +317,7 @@ describe('hypertrophy 14: week structure', () => {
   });
 
   it('runs four weekday-mapped days built from one canonical template', () => {
-    expect(hypertrophyTemplates(STEP_SAMPLE)).toHaveLength(4);
+    expect(hypertrophyJson.days).toHaveLength(4);
     for (const week of hypertrophyWeeks) {
       expect(week.days.map((d) => d.weekday)).toEqual(['monday', 'tuesday', 'thursday', 'friday']);
       expect(week.days.map((d) => d.dayType)).toEqual(['upperA', 'lowerA', 'upperB', 'lowerB']);

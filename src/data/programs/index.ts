@@ -1,7 +1,8 @@
 import type { DayType, ProgramId, WeightUnit, WeekPlan } from '@/types';
 import type { WarmUpItem } from './timing';
 import { movementResilienceProgram } from './movementResilience';
-import { hypertrophy14Program } from './hypertrophy14';
+import { compileProgram } from './compile';
+import hypertrophy14Json from './definitions/hypertrophy-14wk.json';
 
 /**
  * The registry every screen, the repository and the exporter read from.
@@ -29,6 +30,15 @@ export interface ProgramDefinition {
    */
   buildWeeks: (options?: BuildOptions) => WeekPlan[];
 }
+
+/**
+ * Programs written as data live in `definitions/*.json` and are compiled here.
+ * To change what a program trains, edit its JSON — no code changes. To add one,
+ * drop in a JSON file, add its id to `programIdSchema`, and register it below.
+ * The Movement Resilience block predates this and stays in TypeScript: its stored
+ * sessions reference ids minted by that code, and it is finished work.
+ */
+const hypertrophy14Program = compileProgram(hypertrophy14Json, 'hypertrophy-14wk');
 
 export const PROGRAMS: Record<ProgramId, ProgramDefinition> = {
   'movement-resilience': movementResilienceProgram,
