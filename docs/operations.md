@@ -18,9 +18,9 @@ register on a plain `http://192.168.x.x` LAN address; only `localhost` is a trus
 origin).
 
 ```bash
-# 1. Build and serve
+# 1. Build and serve (loopback only — tailscale serve is the sole way in)
 npm run build
-npx vite preview --port 4173 --host 0.0.0.0
+npx vite preview --port 4173 --host 127.0.0.1
 
 # 2. Expose over HTTPS to the tailnet (already configured)
 tailscale serve --bg --https=8444 http://127.0.0.1:4173
@@ -62,19 +62,21 @@ graph TD
   A[Reset current workout] --> A1[Deletes the in-progress session only]
   B[Reset current week] --> B1[Deletes sessions for the current week<br/>cursor back to day 1]
   C[Reset full four-week plan] --> C1[Deletes ALL sessions<br/>week 1 day 1, restart counter +1<br/>keeps plan edits and settings]
-  D[Delete all local data] --> D1[Clears every table, then re-seeds<br/>from program.ts]
+  D[Delete all local data] --> D1[Clears every table, then re-seeds<br/>from the program file]
 ```
 
-**To pick up changed seed values from `program.ts` you need `Delete all local data`.**
-Seeding runs once; the other resets keep the existing `plan.weeks` and any
-`weightOverrides` a previous Excel import wrote — those override the seeds in
-`createSession`.
+**Program changes do not need a reset.** The program lives in
+`src/data/programs/definitions/hypertrophy-14wk.json`. After a rebuild and update, the app
+compares each stored plan with the program file on launch and applies the change itself when
+the plan was never edited on the Plan screen — keeping your place and every logged workout.
+An edited plan is offered the update on the Plan screen instead. `Delete all local data`
+is never needed for this and destroys your history.
 
 ## Verification
 
 ```bash
-npm test          # 146 unit tests
-npm run e2e       # 10 end-to-end (builds + previews automatically)
+npm test          # unit tests
+npm run e2e       # end-to-end (builds + previews automatically)
 npm run lint
 npm run build     # runs tsc -b first
 ```
