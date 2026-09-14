@@ -23,16 +23,23 @@ npm run build
 npx vite preview --port 4173 --host 127.0.0.1
 
 # 2. Expose over HTTPS to the tailnet (already configured)
-tailscale serve --bg --https=8444 http://127.0.0.1:4173
+tailscale serve --bg --https=8445 http://127.0.0.1:4173
 
-# Live at: https://fedora.taild6580d.ts.net:8444/
-# Tear down: tailscale serve --https=8444 off
+# Live at: https://fedora.taild6580d.ts.net:8445/   <- Ironpath's permanent URL
+# Tear down: tailscale serve --https=8445 off
 ```
 
 `vite.config.ts` sets `preview.allowedHosts` to include the tailnet hostname — Vite
 rejects unknown `Host` headers, so removing that entry breaks phone access.
 
 An existing unrelated serve on `:8443 → localhost:3100` must be left alone.
+
+`:8444` is the old Movement & Joint Resilience install's address. Ironpath moved to `:8445`
+on purpose: a phone that had the old app keeps its cached build and install for `:8444`,
+so opening Ironpath there showed the old "Resilience" name. A fresh origin has no old
+service worker, install or data. Because IndexedDB is per origin (see the trap above),
+`:8445` is now the address the workout history lives at — do not move it again without
+exporting first.
 
 Caveats of this setup:
 
