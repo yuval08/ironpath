@@ -11,15 +11,24 @@ import type { ExercisePrescription, ExerciseResult } from '@/types';
 export interface SupersetMember {
   prescription: ExercisePrescription;
   result: ExerciseResult;
+  /** The last time this exercise was logged — drives the set placeholders. */
+  previous: ExerciseResult | null;
+  /** Recent performances, newest first, for the history sheet. */
+  history: PerformanceSnapshot[];
   lastSnapshot: PerformanceSnapshot | null;
   verdict: ProgressionVerdict | null;
 }
 
-/** 'A1' -> 'Superset A'; an unslotted pairing falls back to its block heading. */
+/**
+ * The block's own name — "Superset A", or "Finisher — Abs + Biceps" — so a named
+ * pairing is not reduced to a letter. Falls back to the slot letter only when a
+ * block carries no label.
+ */
 function groupTitle(members: SupersetMember[]): string {
+  const label = members[0]?.prescription.blockLabel;
+  if (label) return label;
   const slot = members.find((m) => m.prescription.slot)?.prescription.slot;
-  if (slot) return `Superset ${slot.slice(0, 1)}`;
-  return members[0]?.prescription.blockLabel ?? 'Superset';
+  return slot ? `Superset ${slot.slice(0, 1)}` : 'Superset';
 }
 
 function memberLabel(member: SupersetMember): string {
@@ -103,6 +112,8 @@ export function SupersetGroup({
               weightUnit={weightUnit}
               bandLabels={bandLabels}
               lastSnapshot={member.lastSnapshot}
+              previous={member.previous}
+              history={member.history}
               verdict={member.verdict}
               isCurrent={currentId === member.prescription.id}
               expanded={expandedId === member.prescription.id}

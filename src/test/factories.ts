@@ -123,6 +123,7 @@ export function makePlan(overrides: Partial<WorkoutPlan> = {}): WorkoutPlan {
     completedAt: null,
     programId: 'movement-resilience',
     archived: false,
+    builtFingerprint: null,
     ...overrides,
   };
 }

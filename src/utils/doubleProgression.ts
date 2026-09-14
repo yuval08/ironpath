@@ -51,6 +51,8 @@ export interface PerformanceSnapshot {
   band: BandResistance | null;
   reps: number[];
   rir: (number | null)[];
+  /** Working sets as logged, one entry per set, for the set-by-set history. */
+  sets: SetResult[];
 }
 
 export function snapshotFor(session: WorkoutSession, result: ExerciseResult): PerformanceSnapshot {
@@ -63,6 +65,7 @@ export function snapshotFor(session: WorkoutSession, result: ExerciseResult): Pe
     band: bands[bands.length - 1] ?? null,
     reps: sets.map(progressionReps),
     rir: sets.map((s) => s.rir ?? null),
+    sets,
   };
 }
 
@@ -78,21 +81,59 @@ function sortedByDate(sessions: WorkoutSession[]): WorkoutSession[] {
   );
 }
 
+/** Every result logged for an exercise, oldest first, skipping skips and abandoned sessions. */
+function loggedResults(
+  sessions: WorkoutSession[],
+  exerciseId: string,
+): { session: WorkoutSession; result: ExerciseResult }[] {
+  return sortedByDate(sessions)
+    .filter((session) => session.status !== 'abandoned')
+    .flatMap((session) => resultsFor(session, exerciseId).map((result) => ({ session, result })));
+}
+
+/**
+ * The most recent time this exercise was logged — what double progression judges
+ * and what the set placeholders echo back. Callers pass sessions already scoped to
+ * one plan, so another program's history can never answer for this one.
+ */
+export function previousResult(
+  sessions: WorkoutSession[],
+  exerciseId: string,
+): ExerciseResult | null {
+  return loggedResults(sessions, exerciseId).at(-1)?.result ?? null;
+}
+
+/**
+ * The placeholder for a set row: the same set last time, or the last set logged
+ * when this session has more sets than that one did (reload week 1 ran two).
+ */
+export function setHint(
+  previous: ExerciseResult | null,
+  index: number,
+  ramp = false,
+): SetResult | null {
+  if (!previous) return null;
+  const sets = ramp ? rampSetsOf(previous) : workingSets(previous);
+  return sets[index] ?? sets.at(-1) ?? null;
+}
+
 /** Every logged performance of an exercise, oldest first. */
 export function performanceHistory(
   sessions: WorkoutSession[],
   exerciseId: string,
 ): PerformanceSnapshot[] {
-  const out: PerformanceSnapshot[] = [];
-  for (const session of sortedByDate(sessions)) {
-    if (session.status === 'abandoned') continue;
-    for (const result of resultsFor(session, exerciseId)) {
-      const snap = snapshotFor(session, result);
-      if (snap.reps.length === 0 && snap.weight == null && snap.band == null) continue;
-      out.push(snap);
-    }
-  }
-  return out;
+  return loggedResults(sessions, exerciseId)
+    .map(({ session, result }) => snapshotFor(session, result))
+    .filter((snap) => snap.reps.length > 0 || snap.weight != null || snap.band != null);
+}
+
+/** The last few logged performances, newest first. */
+export function recentPerformances(
+  sessions: WorkoutSession[],
+  exerciseId: string,
+  limit = 3,
+): PerformanceSnapshot[] {
+  return performanceHistory(sessions, exerciseId).slice(-limit).reverse();
 }
 
 export function lastPerformance(

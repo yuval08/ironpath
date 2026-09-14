@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Bumped whenever the persisted shape changes; see src/db/migrations.ts. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /* ------------------------------------------------------------------ */
 /* Primitives                                                          */
@@ -233,6 +233,12 @@ export const workoutPlanSchema = entityBase.extend({
   completedAt: z.string().nullable().default(null),
   programId: programIdSchema.default('movement-resilience'),
   archived: z.boolean().default(false),
+  /**
+   * Fingerprint of `weeks` exactly as the program built them. When the stored weeks
+   * still match it, nobody has edited the plan in-app and an updated program can be
+   * applied without losing anything. null on plans built before this existed.
+   */
+  builtFingerprint: z.string().nullable().default(null),
 });
 export type WorkoutPlan = z.infer<typeof workoutPlanSchema>;
 

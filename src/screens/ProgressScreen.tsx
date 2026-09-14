@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Check, TrendingUp, X } from 'lucide-react';
 import { useAppData } from '@/state/AppDataProvider';
@@ -15,6 +15,8 @@ import {
   workingSetsOf,
 } from '@/utils/stats';
 import { ExerciseProgressCard } from './progress/ExerciseProgressCard';
+import { KeyLiftsCard } from './progress/KeyLiftsCard';
+import { programFor } from '@/data/programs';
 import { BandLadderCard } from './progress/BandLadderCard';
 import { BodyweightCard, DurationTrendCard, RirTrendCard } from './progress/TrendCards';
 import { PainFlagsCard } from './progress/PainFlagsCard';
@@ -44,6 +46,8 @@ function bestSetSeries(
 export default function ProgressScreen() {
   const { plan, sessions, suggestions, settings } = useAppData();
   const { toast } = useToast();
+  // Held here so a key-lift row can chart its exercise in the card below it.
+  const [chartedLift, setChartedLift] = useState<string | null>(null);
 
   // Charts describe the plan you are training. `sessions` is unfiltered upstream
   // because export needs every plan's history.
@@ -129,11 +133,28 @@ export default function ProgressScreen() {
         />
       </ChartCard>
 
+      <KeyLiftsCard
+        lifts={programFor(plan.programId).keyLifts ?? []}
+        sessions={planSessions}
+        unit={settings.weightUnit}
+        bandLabels={settings.bandLabels}
+        onSelect={(id) => {
+          setChartedLift(id);
+          requestAnimationFrame(() =>
+            document
+              .getElementById('exercise-progression')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          );
+        }}
+      />
+
       <ExerciseProgressCard
         plan={plan}
         sessions={planSessions}
         unit={settings.weightUnit}
         bandLabels={settings.bandLabels}
+        selected={chartedLift}
+        onSelect={setChartedLift}
       />
 
       <BandLadderCard sessions={planSessions} bandLabels={settings.bandLabels} />

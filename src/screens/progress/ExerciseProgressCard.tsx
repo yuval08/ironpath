@@ -19,11 +19,16 @@ export function ExerciseProgressCard({
   sessions,
   unit,
   bandLabels,
+  selected: controlled,
+  onSelect,
 }: {
   plan: WorkoutPlan;
   sessions: WorkoutSession[];
   unit: string;
   bandLabels: BandLabels;
+  /** When given, the parent owns the choice — so a key-lift row can chart itself here. */
+  selected?: string | null;
+  onSelect?: (exerciseId: string) => void;
 }) {
   // Every exercise the plan prescribes, in the order the plan runs them, so the
   // picker reads like the programme rather than like the exercise library.
@@ -37,7 +42,9 @@ export function ExerciseProgressCard({
     return [...seen];
   }, [plan]);
 
-  const [selected, setSelected] = useState<string>(exerciseIds[0] ?? '');
+  const [own, setOwn] = useState<string>(exerciseIds[0] ?? '');
+  const selected = controlled ?? own;
+  const setSelected = (id: string) => (onSelect ? onSelect(id) : setOwn(id));
   const history = useMemo(() => performanceHistory(sessions, selected), [sessions, selected]);
 
   const weightPoints: Point[] = history
@@ -51,7 +58,11 @@ export function ExerciseProgressCard({
   if (exerciseIds.length === 0) return null;
 
   return (
-    <ChartCard title="Exercise progression" subtitle="Top set per session">
+    <ChartCard
+      title="Exercise progression"
+      subtitle="Top set per session"
+      id="exercise-progression"
+    >
       <label className="field">
         Exercise
         <select value={selected} onChange={(e) => setSelected(e.target.value)}>

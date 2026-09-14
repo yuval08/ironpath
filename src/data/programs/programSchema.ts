@@ -161,6 +161,8 @@ export const programDefinitionSchema = z
           .strict(),
       )
       .default([]),
+    /** Exercises summarised at the top of the Progress screen, in this order. */
+    keyLifts: z.array(z.string().min(1)).default([]),
     days: z.array(programDaySchema).min(1),
     weeks: z.array(programWeekSchema).min(1),
   })

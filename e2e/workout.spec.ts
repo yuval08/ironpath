@@ -287,6 +287,70 @@ test.describe('Ironpath — hypertrophy block', () => {
   });
 });
 
+test.describe('revised plan', () => {
+  test('ends Upper A with Cable Crunch into Cable Curl', async ({ page }) => {
+    await freshApp(page);
+    await beginSession(page);
+
+    await expect(page.getByText('Finisher — Abs + Biceps')).toBeVisible();
+    const crunch = page.locator('.exercise-card', { hasText: 'Cable Crunch' }).first();
+    const curl = page.locator('.exercise-card', { hasText: 'Cable Curl' }).first();
+    await expect(crunch.locator('.slot-badge')).toHaveText('F1');
+    await expect(curl.locator('.slot-badge')).toHaveText('F2');
+
+    const plan = await activePlanRow(page);
+    const upperB = plan.weeks[2]!.days.find((_, i) => i === 2)!;
+    const ids = upperB.prescriptions.map((p) => p.exerciseId);
+    // Upper B finishes with the leg raise into the pressdown.
+    expect(ids.slice(-2)).toEqual(['captains-chair-leg-raise', 'rope-triceps-pressdown']);
+  });
+
+  test('shows what you did last time as the placeholder and in the history sheet', async ({
+    page,
+  }) => {
+    await freshApp(page);
+    await beginSession(page);
+
+    // Log a real number on the first set, then finish the session.
+    await page.getByLabel('Set 1 of 2 Reps').first().fill('11');
+    await page.getByRole('button', { name: 'Complete all' }).first().click();
+    const skipRest = page.getByRole('button', { name: 'Skip rest' });
+    if (await skipRest.isVisible().catch(() => false)) await skipRest.click();
+    await page
+      .getByRole('button', { name: /^Finish/ })
+      .first()
+      .click();
+    await page
+      .getByRole('dialog', { name: 'Pain after training' })
+      .getByRole('button', { name: /Save & complete workout/i })
+      .click();
+    await expect(page.getByRole('heading', { name: 'Progress', exact: true })).toBeVisible();
+
+    // Upper B also opens with scapular pull-ups, so it should echo Monday's 11.
+    await page.getByRole('link', { name: 'Plan' }).click();
+    await page
+      .getByRole('button', { name: /Upper B/ })
+      .first()
+      .click();
+    await page.getByRole('button', { name: /Start this workout/ }).click();
+    await page.getByRole('button', { name: /^Start workout$/ }).click();
+    await page
+      .getByRole('dialog', { name: 'Pain before training' })
+      .getByRole('button', { name: 'Save' })
+      .click();
+
+    const reps = page.getByLabel(/Set 1 of 2 Reps, last time 11/);
+    await expect(reps).toHaveAttribute('placeholder', '11');
+    await expect(reps).toHaveValue('');
+
+    const card = page.locator('.exercise-card', { hasText: 'Scapular Pull-Up' }).first();
+    await card.getByRole('button', { name: /More options/ }).click();
+    const history = page.getByRole('region', { name: 'History' });
+    await expect(history.getByText('Last time')).toBeVisible();
+    await expect(history.getByText('11 reps')).toBeVisible();
+  });
+});
+
 test.describe('multi-plan', () => {
   test('keeps a second plan and its history when switching', async ({ page }) => {
     await freshApp(page);

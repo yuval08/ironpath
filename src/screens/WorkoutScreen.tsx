@@ -24,7 +24,12 @@ import {
 } from '@/db/repository';
 import { detectProgressions } from '@/utils/progression';
 import { programFor } from '@/data/programs';
-import { evaluateDoubleProgression, lastPerformance } from '@/utils/doubleProgression';
+import {
+  evaluateDoubleProgression,
+  lastPerformance,
+  previousResult,
+  recentPerformances,
+} from '@/utils/doubleProgression';
 import type { BandLabels } from '@/utils/doubleProgression';
 import { formatDuration, performedExerciseId, sessionProgress, setReps } from '@/utils/stats';
 import { db } from '@/db/db';
@@ -278,11 +283,13 @@ export default function WorkoutScreen() {
   const warmUpDone = !!session.warmUpCompletedAt;
   const blocks = buildBlocks(day, session, (prescription, result) => {
     const exerciseId = performedExerciseId(result);
-    const previous = previousResultFor(priorSessions, exerciseId);
+    const previous = previousResult(priorSessions, exerciseId);
     const verdict = evaluateDoubleProgression(prescription, previous);
     return {
       prescription,
       result,
+      previous,
+      history: recentPerformances(priorSessions, exerciseId, 3),
       lastSnapshot: lastPerformance(priorSessions, exerciseId),
       // Only a 'ready' verdict renders; anything else stays out of the way.
       verdict: verdict.status === 'ready' ? verdict : null,
@@ -381,6 +388,8 @@ export default function WorkoutScreen() {
                       weightUnit={settings.weightUnit}
                       bandLabels={bandLabels}
                       lastSnapshot={member.lastSnapshot}
+                      previous={member.previous}
+                      history={member.history}
                       verdict={member.verdict}
                       isCurrent={nextExercise?.prescriptionId === member.prescription.id}
                       expanded={expanded === member.prescription.id}
@@ -563,21 +572,6 @@ function buildBlocks(
     else block.units.push({ supersetKey: key, members: [member] });
   }
   return blocks;
-}
-
-/** The most recent logged result for an exercise, ignoring skips and this session. */
-function previousResultFor(sessions: WorkoutSession[], exerciseId: string): ExerciseResult | null {
-  const ordered = [...sessions].sort((a, b) =>
-    `${b.date}${b.startedAt}`.localeCompare(`${a.date}${a.startedAt}`),
-  );
-  for (const session of ordered) {
-    if (session.status === 'abandoned') continue;
-    const match = session.results.find(
-      (r) => r.skippedReason == null && performedExerciseId(r) === exerciseId,
-    );
-    if (match) return match;
-  }
-  return null;
 }
 
 /** Records any personal record the finished session beat. */

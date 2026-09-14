@@ -155,3 +155,46 @@
   border-radius: 50%;
   background: var(--accent);
 }
+
+/* ------------------------------------------------------------ last time */
+/*
+ * A placeholder carrying last time's number has to read as information, not as the
+ * faint "reps" label an empty box shows — it is what the user loads the bar from.
+ */
+.set-row input.hinted::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------- history */
+.exercise-history h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.history-session + .history-session {
+  margin-top: 10px;
+}
+
+.history-date {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.history-sets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-set-no {
+  display: inline-block;
+  width: 1.4em;
+  color: var(--text-dim);
+}

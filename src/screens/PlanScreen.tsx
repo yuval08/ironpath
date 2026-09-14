@@ -17,6 +17,7 @@ import { BAND_LADDER, bandName, type BandLabels } from '@/utils/doubleProgressio
 import { useToast } from '@/state/ToastProvider';
 import { PlanSwitcher } from './PlanSwitcher';
 import { PhaseBadge } from './PhaseBadge';
+import { ProgramUpdateBanner } from './ProgramUpdateBanner';
 import type { BandResistance, ExercisePrescription, ResumeChoice, WorkoutDay } from '@/types';
 
 export default function PlanScreen() {
@@ -99,6 +100,7 @@ export default function PlanScreen() {
 
   return (
     <div>
+      <ProgramUpdateBanner plan={plan} weightUnit={settings.weightUnit} />
       <PlanSwitcher />
 
       <div className="card">

@@ -9,6 +9,22 @@ interface FieldSpec {
   placeholder?: string;
 }
 
+/** Fields that echo last time's value as their placeholder. */
+const HINTED: ReadonlySet<keyof SetResult> = new Set(['weight', 'reps', 'repsLeft', 'repsRight']);
+
+/**
+ * Applies one typed value to a set. Per-side reps are usually equal, so the left
+ * value fills the right until the right has been given its own — one number to
+ * type instead of two, without ever overwriting a side the user set deliberately.
+ */
+export function applyField(set: SetResult, key: keyof SetResult, value: number | null): SetResult {
+  const next = { ...set, [key]: value };
+  if (key === 'repsLeft' && (set.repsRight == null || set.repsRight === set.repsLeft)) {
+    next.repsRight = value;
+  }
+  return next;
+}
+
 /** Which effort scale the exercise is logged against. */
 export type EffortField = 'rpe' | 'rir';
 
@@ -42,8 +58,11 @@ export function fieldsFor(
 
   switch (entryStyle) {
     case 'reps':
-      return loaded
-        ? [weight, { key: 'reps', label: 'Reps', placeholder: 'reps' }, effortField]
+      if (loaded) return [weight, { key: 'reps', label: 'Reps', placeholder: 'reps' }, effortField];
+      // An RIR-prescribed bodyweight or band exercise has no use for an RPE column —
+      // it is the band pull-up's one wasted box. The resilience block keeps both.
+      return effort === 'rir'
+        ? [{ key: 'reps', label: 'Reps', placeholder: 'reps' }, rir]
         : [{ key: 'reps', label: 'Reps', placeholder: 'reps' }, rpe, rir];
     case 'repsPerSide':
       return loaded
@@ -97,6 +116,7 @@ export function SetRow({
   label,
   labelFull,
   muted = false,
+  hint = null,
   onChange,
   onToggle,
 }: {
@@ -115,6 +135,8 @@ export function SetRow({
   /** Spelled-out form of `label` for screen readers, when the gutter is abbreviated. */
   labelFull?: string;
   muted?: boolean;
+  /** The same set from last time; its weight and reps become this row's placeholders. */
+  hint?: SetResult | null;
   onChange: (next: SetResult) => void;
   onToggle: () => void;
 }) {
@@ -140,23 +162,30 @@ export function SetRow({
       )}
       <div className={`set-row ${muted ? 'ramp' : ''}`} style={columns}>
         <span className="set-no">{gutter}</span>
-        {fields.map((f) => (
-          <input
-            key={f.key}
-            type="number"
-            inputMode="decimal"
-            step={f.step ?? 1}
-            min={0}
-            aria-label={`Set ${spoken} ${f.label}`}
-            placeholder={f.placeholder}
-            value={(set[f.key] as number | null) ?? ''}
-            onChange={(e) => {
-              const raw = e.target.value;
-              const value = raw === '' ? null : Number(raw);
-              onChange({ ...set, [f.key]: value === null || Number.isNaN(value) ? null : value });
-            }}
-          />
-        ))}
+        {fields.map((f) => {
+          const previous = HINTED.has(f.key) ? (hint?.[f.key] as number | null | undefined) : null;
+          const hinted = previous != null;
+          return (
+            <input
+              key={f.key}
+              type="number"
+              inputMode="decimal"
+              step={f.step ?? 1}
+              min={0}
+              className={hinted ? 'hinted' : undefined}
+              aria-label={`Set ${spoken} ${f.label}${hinted ? `, last time ${previous}` : ''}`}
+              placeholder={hinted ? String(previous) : f.placeholder}
+              value={(set[f.key] as number | null) ?? ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const value = raw === '' ? null : Number(raw);
+                onChange(
+                  applyField(set, f.key, value === null || Number.isNaN(value) ? null : value),
+                );
+              }}
+            />
+          );
+        })}
         <button
           type="button"
           className={`check-btn ${set.completed ? 'on' : ''}`}

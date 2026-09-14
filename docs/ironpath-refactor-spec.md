@@ -1,5 +1,10 @@
 # Ironpath — refactor + 14-Week Hypertrophy program
 
+> **Superseded in part.** This spec drove the original build. The hypertrophy program has since moved
+> from `src/data/programs/hypertrophy14.ts` to `src/data/programs/definitions/hypertrophy-14wk.json`,
+> and the plan was revised to add the arm finishers. The README's "Editing the program" section is the
+> current reference for the program format.
+
 **Branch:** `ironpath-hypertrophy-14wk`
 
 This is the single source of truth every agent builds against. Do NOT invent contracts;
@@ -8,7 +13,7 @@ if something here is wrong, report it, do not silently diverge.
 ## Goal
 
 The app becomes **Ironpath**, a multi-program workout tracker. The existing
-"Movement & Joint Resilience" 4-week block stays as a *selectable program* with its
+"Movement & Joint Resilience" 4-week block stays as a _selectable program_ with its
 history intact. A new **14-Week Hypertrophy — Upper / Lower** program (2 reload weeks +
 12 hypertrophy weeks + 1 deload week = 15 stored weeks) becomes the default active plan.
 
@@ -27,14 +32,14 @@ Reuse the existing architecture. Do not rebuild. Do not create parallel duplicat
 
 ## Ownership map (do NOT edit files you do not own)
 
-| Agent | Owns |
-|---|---|
+| Agent                           | Owns                                                                                                                                                                                                                                                                 |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | foundation (wave 1, runs alone) | `src/types/index.ts`, `src/db/db.ts`, `src/db/migrations.ts`, `src/db/repository.ts`, `src/state/AppDataProvider.tsx`, `src/db/repository.test.ts`, `src/test/factories.ts`, empty `src/styles/workout.css` + `src/styles/shell.css` stubs imported from `index.css` |
-| program | `src/data/**` (programs/, exercises.ts, substitutions.ts, exerciseVideos.ts, program.test.ts) |
-| engine | `src/utils/doubleProgression.ts` (new), `src/utils/progression.ts`, `src/utils/stats.ts` + their tests |
-| workout-ui | `src/components/**`, `src/screens/WorkoutScreen.tsx`, `src/styles/workout.css` |
-| shell | `src/App.tsx`, `src/main.tsx`, `src/screens/{Dashboard,PlanScreen,ProgressScreen,MoreScreen,SettingsScreen,PullUpScreen,ImportScreen,FinalAssessmentScreen}.tsx`, `src/styles/shell.css`, `index.html`, `vite.config.ts`, `package.json`, `public/**`, `README.md` |
-| export | `src/utils/{excelExport,excelImport,backup}.ts` + their tests |
+| program                         | `src/data/**` (programs/, exercises.ts, substitutions.ts, exerciseVideos.ts, program.test.ts)                                                                                                                                                                        |
+| engine                          | `src/utils/doubleProgression.ts` (new), `src/utils/progression.ts`, `src/utils/stats.ts` + their tests                                                                                                                                                               |
+| workout-ui                      | `src/components/**`, `src/screens/WorkoutScreen.tsx`, `src/styles/workout.css`                                                                                                                                                                                       |
+| shell                           | `src/App.tsx`, `src/main.tsx`, `src/screens/{Dashboard,PlanScreen,ProgressScreen,MoreScreen,SettingsScreen,PullUpScreen,ImportScreen,FinalAssessmentScreen}.tsx`, `src/styles/shell.css`, `index.html`, `vite.config.ts`, `package.json`, `public/**`, `README.md`   |
+| export                          | `src/utils/{excelExport,excelImport,backup}.ts` + their tests                                                                                                                                                                                                        |
 
 `src/styles/index.css` is owned by nobody — add new styles to `workout.css` / `shell.css`.
 `e2e/` is the lead's.
@@ -58,16 +63,19 @@ export const progressionTypeSchema = z.enum(['double', 'bandAssist', 'reps', 'ti
 
 **WorkoutDay / WeekPlan** — `weekNumber` widen `.min(1).max(52)`.
 **WeekPlan** adds:
+
 - `phase: weekPhaseSchema.default('base')`
 - `blockWeek: z.number().int().nullable().default(null)` — 1..12 inside the hypertrophy block, else null
 - `pushUpGoalLow` / `pushUpGoalHigh` become `.optional()`
 
 **WorkoutPlan**:
+
 - `currentWeek: z.number().int().min(1)` (drop `.max(4)`)
 - `programId: programIdSchema.default('movement-resilience')`
 - `archived: z.boolean().default(false)`
 
 **ExercisePrescription** adds:
+
 - `slot: z.string().optional()` — `'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'`
 - `supersetKey: z.string().optional()` — prescriptions sharing this key are one superset
 - `role: exerciseRoleSchema.default('accessory')`
@@ -79,9 +87,11 @@ export const progressionTypeSchema = z.enum(['double', 'bandAssist', 'reps', 'ti
 - `rampSets: z.number().int().default(0)` — optional non-working ramp sets
 
 **SetResult** adds:
+
 - `isWarmUp: z.boolean().default(false)`
 
 **UserSettings** adds:
+
 - `activePlanId: z.string().nullable().default(null)`
 - `bandLabels: z.record(bandResistanceSchema, z.string()).default(DEFAULT_BAND_LABELS)` — user-editable band names
 
@@ -124,19 +134,23 @@ New / changed API:
 
 ```ts
 export async function getPlans(): Promise<WorkoutPlan[]>;
-export async function getPlan(): Promise<WorkoutPlan | undefined>;      // the ACTIVE plan
+export async function getPlan(): Promise<WorkoutPlan | undefined>; // the ACTIVE plan
 export async function getPlanById(id: string): Promise<WorkoutPlan | undefined>;
-export async function setActivePlan(planId: string): Promise<void>;     // writes settings.activePlanId
-export async function createPlanFromProgram(programId: ProgramId, startDate?: string): Promise<WorkoutPlan>;
+export async function setActivePlan(planId: string): Promise<void>; // writes settings.activePlanId
+export async function createPlanFromProgram(
+  programId: ProgramId,
+  startDate?: string,
+): Promise<WorkoutPlan>;
 export async function archivePlan(planId: string, archived: boolean): Promise<void>;
-export async function deletePlan(planId: string): Promise<void>;        // + its sessions, in one txn
-export async function updatePlan(patch: Partial<WorkoutPlan>): Promise<void>;  // active plan
-export function totalSessionsFor(plan: WorkoutPlan): number;            // weeks * days
+export async function deletePlan(planId: string): Promise<void>; // + its sessions, in one txn
+export async function updatePlan(patch: Partial<WorkoutPlan>): Promise<void>; // active plan
+export function totalSessionsFor(plan: WorkoutPlan): number; // weeks * days
 ```
 
 Active-plan resolution: `settings.activePlanId` → else first non-archived plan → else first plan.
 
 `ensureSeeded()`:
+
 - creates settings as today, plus `activePlanId: null`, `bandLabels: DEFAULT_BAND_LABELS`
 - if there are **no** plans: create the `hypertrophy-14wk` plan and set it active
 - if plans exist but none has `programId === 'hypertrophy-14wk'` **and** meta key
@@ -145,6 +159,7 @@ Active-plan resolution: `settings.activePlanId` → else first non-archived plan
 - still fully transactional + re-checked after acquiring the transaction (StrictMode / two tabs).
 
 `createSession(plan, day, weightOverrides)`:
+
 - warm-up items come from `programFor(plan.programId).warmUp` (NOT the global `WARM_UP` import)
 - for each prescription, emit `rampSets` sets with `isWarmUp: true` FIRST (setNumber 1..n),
   then `sets` working sets. `plannedSets` stays the WORKING set count.
@@ -165,17 +180,17 @@ export needs them all).
 // src/data/programs/index.ts
 export interface ProgramDefinition {
   id: ProgramId;
-  name: string;              // '14-Week Hypertrophy — Upper / Lower'
-  shortName: string;         // 'Hypertrophy 14'
+  name: string; // '14-Week Hypertrophy — Upper / Lower'
+  shortName: string; // 'Hypertrophy 14'
   description: string;
   weekCount: number;
   daysPerWeek: number;
-  warmUp: WarmUpItem[];      // [] for hypertrophy — general warm-up is done outside the app
+  warmUp: WarmUpItem[]; // [] for hypertrophy — general warm-up is done outside the app
   dayLabels: Record<DayType, string>;
   buildWeeks: () => WeekPlan[];
 }
 export const PROGRAMS: Record<ProgramId, ProgramDefinition>;
-export function programFor(id: ProgramId): ProgramDefinition;   // falls back to movement-resilience
+export function programFor(id: ProgramId): ProgramDefinition; // falls back to movement-resilience
 export const DEFAULT_PROGRAM_ID: ProgramId = 'hypertrophy-14wk';
 ```
 
@@ -194,7 +209,7 @@ Pure, no React, no Dexie. Exact API (workout-ui, shell and export all consume th
 export const BAND_LADDER: BandResistance[]; // ['extraHeavy','heavy','medium','light','extraLight','none'] — descending assistance
 export function nextLighterBand(b: BandResistance): BandResistance | null;
 
-export function workingSets(result: ExerciseResult): SetResult[];       // sets.filter(s => !s.isWarmUp)
+export function workingSets(result: ExerciseResult): SetResult[]; // sets.filter(s => !s.isWarmUp)
 export function rampSetsOf(result: ExerciseResult): SetResult[];
 
 export interface PerformanceSnapshot {
@@ -205,9 +220,19 @@ export interface PerformanceSnapshot {
   rir: (number | null)[];
 }
 export function snapshotFor(session: WorkoutSession, result: ExerciseResult): PerformanceSnapshot;
-export function lastPerformance(sessions: WorkoutSession[], exerciseId: string): PerformanceSnapshot | null;
-export function performanceHistory(sessions: WorkoutSession[], exerciseId: string): PerformanceSnapshot[];
-export function formatPerformance(s: PerformanceSnapshot | null, unit: string, bandLabels?: Record<BandResistance,string>): string;
+export function lastPerformance(
+  sessions: WorkoutSession[],
+  exerciseId: string,
+): PerformanceSnapshot | null;
+export function performanceHistory(
+  sessions: WorkoutSession[],
+  exerciseId: string,
+): PerformanceSnapshot[];
+export function formatPerformance(
+  s: PerformanceSnapshot | null,
+  unit: string,
+  bandLabels?: Record<BandResistance, string>,
+): string;
 //   '32 kg · 10 / 9 / 8 · RIR 2 / 1 / 1'   |   'Medium band · 9 / 8 / 8'   |   'No history yet'
 
 export type ProgressionStatus = 'ready' | 'hold' | 'noData';
@@ -216,7 +241,7 @@ export interface ProgressionVerdict {
   kind: 'weight' | 'assistance' | 'reps' | 'none';
   /** 'Ready to increase load next session' | 'Ready to reduce band assistance' */
   message: string;
-  suggestedWeight: number | null;   // currentWeight + weightIncrement
+  suggestedWeight: number | null; // currentWeight + weightIncrement
   suggestedBand: BandResistance | null;
 }
 export function evaluateDoubleProgression(
@@ -226,16 +251,18 @@ export function evaluateDoubleProgression(
 ```
 
 Readiness gate (double / bandAssist):
+
 1. `result` exists, not skipped, `formGood !== false`
 2. `workingSets(result).length >= prescription.sets` and every working set `completed`
 3. every working set's rep count (`reps`, or `min(repsLeft, repsRight)` when `perSide`) `>= repsHigh`
 
-RIR does **not** gate readiness — hitting the top of the range at a high RIR argues *more* strongly
+RIR does **not** gate readiness — hitting the top of the range at a high RIR argues _more_ strongly
 for a load increase, not less. RIR only colours the message.
 
 Nothing here mutates. Nothing auto-applies. The user confirms the new load.
 
 `src/utils/progression.ts` keeps the existing suggestion pipeline but:
+
 - ignores warm-up sets everywhere
 - for `progressionType: 'double' | 'bandAssist'` prescriptions, uses `evaluateDoubleProgression`
   instead of the RPE≤7 / two-clean-sessions heuristic, and needs only **one** qualifying session
@@ -251,24 +278,24 @@ Nothing here mutates. Nothing auto-applies. The user confirms the new load.
 
 **Name:** `14-Week Hypertrophy — Upper / Lower`. 15 stored weeks.
 
-| weekNumber | phase | blockWeek | title |
-|---|---|---|---|
-| 1 | reload | null | `Reload Week 1 — Technique & Load Reintroduction` |
-| 2 | reload | null | `Reload Week 2 — Establish Starting Loads` |
-| 3–14 | hypertrophy | 1–12 | `Hypertrophy Week {blockWeek}` |
-| 15 | deload | null | `Deload Week — Recover & Reset` |
+| weekNumber | phase       | blockWeek | title                                             |
+| ---------- | ----------- | --------- | ------------------------------------------------- |
+| 1          | reload      | null      | `Reload Week 1 — Technique & Load Reintroduction` |
+| 2          | reload      | null      | `Reload Week 2 — Establish Starting Loads`        |
+| 3–14       | hypertrophy | 1–12      | `Hypertrophy Week {blockWeek}`                    |
+| 15         | deload      | null      | `Deload Week — Recover & Reset`                   |
 
 Four training days, weekday-mapped: monday=`upperA`, tuesday=`lowerA`, thursday=`upperB`,
 friday=`lowerB`. `warmUp: []`.
 
 Set scaling by phase, applied to a single canonical template (no duplicated week data):
 
-| phase | main (`role: 'main'`) | accessory / prep / finisher | target RIR |
-|---|---|---|---|
-| reload (wk 1) | `min(base, 2)` | `min(base, 2)` | 3 |
-| reload (wk 2) | `base` | `min(base, 3)` | 2–3 |
-| hypertrophy | `base` | `base` | 1–2 (isolation last set may reach 0–1) |
-| deload (wk 15) | `min(base, 2)` | `min(base, 2)` | 3 |
+| phase          | main (`role: 'main'`) | accessory / prep / finisher | target RIR                             |
+| -------------- | --------------------- | --------------------------- | -------------------------------------- |
+| reload (wk 1)  | `min(base, 2)`        | `min(base, 2)`              | 3                                      |
+| reload (wk 2)  | `base`                | `min(base, 3)`              | 2–3                                    |
+| hypertrophy    | `base`                | `base`                      | 1–2 (isolation last set may reach 0–1) |
+| deload (wk 15) | `min(base, 2)`        | `min(base, 2)`              | 3                                      |
 
 Ramp sets are only offered from reload week 2 onward (`rampSets` as listed below), and are
 suppressed in reload week 1 where loads are deliberately conservative.
@@ -278,15 +305,15 @@ reload week 1, "do not reduce band assistance this week even if the reps feel ea
 
 ### Monday — Upper A · Pull-Up + Chest Emphasis (`upperA`)
 
-| slot | exercise | role | sets | reps | rest s | ramp | progression | RIR |
-|---|---|---|---|---|---|---|---|---|
-| — | `scapular-pull-up` | prep | 2 | 8–12 | 60 | 0 | reps | — |
-| A1 | `band-assisted-pull-up` | main | 3 | 6–10 | 0 | 0 | bandAssist | 1–2 |
-| A2 | `incline-dumbbell-press` | main | 5 | 6–10 | 90 | 1 | double | 1–2 |
-| B1 | `chest-supported-row` | accessory | 3 | 8–12 | 0 | 0 | double | 1–2 |
-| B2 | `cable-lateral-raise` | accessory | 3 | 12–20 | 70 | 0 | double | 1–2 |
-| — | `cable-face-pull` | accessory | 2 | 12–20 | 60 | 0 | double | 2–3 |
-| — | `cable-crunch` | finisher | 3 | 10–15 | 45 | 0 | double | 1–2 |
+| slot | exercise                 | role      | sets | reps  | rest s | ramp | progression | RIR |
+| ---- | ------------------------ | --------- | ---- | ----- | ------ | ---- | ----------- | --- |
+| —    | `scapular-pull-up`       | prep      | 2    | 8–12  | 60     | 0    | reps        | —   |
+| A1   | `band-assisted-pull-up`  | main      | 3    | 6–10  | 0      | 0    | bandAssist  | 1–2 |
+| A2   | `incline-dumbbell-press` | main      | 5    | 6–10  | 90     | 1    | double      | 1–2 |
+| B1   | `chest-supported-row`    | accessory | 3    | 8–12  | 0      | 0    | double      | 1–2 |
+| B2   | `cable-lateral-raise`    | accessory | 3    | 12–20 | 70     | 0    | double      | 1–2 |
+| —    | `cable-face-pull`        | accessory | 2    | 12–20 | 60     | 0    | double      | 2–3 |
+| —    | `cable-crunch`           | finisher  | 3    | 10–15 | 45     | 0    | double      | 1–2 |
 
 `incline-dumbbell-press` substitutes to `incline-smith-press`.
 `cable-lateral-raise` substitutes to `dumbbell-lateral-raise`.
@@ -295,29 +322,29 @@ Superset A pairs only its first 3 rounds (derived: `min(sets)` across the group)
 
 ### Tuesday — Lower A · Smith Squat Emphasis (`lowerA`)
 
-| slot | exercise | role | sets | reps | rest s | ramp | progression | RIR |
-|---|---|---|---|---|---|---|---|---|
-| — | `smith-machine-squat` | main | 3 | 6–10 | 135 | 2 | double | 1–2 |
-| B1 | `seated-leg-curl` | accessory | 4 | 10–15 | 0 | 0 | double | 1–2 |
-| B2 | `leg-extension` | accessory | 3 | 10–15 | 85 | 0 | double | 1–2 |
-| C1 | `hip-thrust` | accessory | 3 | 8–12 | 0 | 0 | double | 1–2 |
-| C2 | `standing-calf-raise` | accessory | 3 | 10–15 | 90 | 0 | double | 1–2 |
-| — | `tibialis-raise` | finisher | 2 | 15–20 | 45 | 0 | reps | — |
+| slot | exercise              | role      | sets | reps  | rest s | ramp | progression | RIR |
+| ---- | --------------------- | --------- | ---- | ----- | ------ | ---- | ----------- | --- |
+| —    | `smith-machine-squat` | main      | 3    | 6–10  | 135    | 2    | double      | 1–2 |
+| B1   | `seated-leg-curl`     | accessory | 4    | 10–15 | 0      | 0    | double      | 1–2 |
+| B2   | `leg-extension`       | accessory | 3    | 10–15 | 85     | 0    | double      | 1–2 |
+| C1   | `hip-thrust`          | accessory | 3    | 8–12  | 0      | 0    | double      | 1–2 |
+| C2   | `standing-calf-raise` | accessory | 3    | 10–15 | 90     | 0    | double      | 1–2 |
+| —    | `tibialis-raise`      | finisher  | 2    | 15–20 | 45     | 0    | reps        | —   |
 
 Smith squat is **never** supersetted (no `supersetKey`).
 `seated-leg-curl` substitutes to `lying-leg-curl`.
 
 ### Thursday — Upper B · Pull-Up + Shoulder Emphasis (`upperB`)
 
-| slot | exercise | role | sets | reps | rest s | ramp | progression | RIR |
-|---|---|---|---|---|---|---|---|---|
-| — | `scapular-pull-up` | prep | 2 | 8–12 | 60 | 0 | reps | — |
-| A1 | `band-assisted-pull-up` | main | 3 | 6–10 | 0 | 0 | bandAssist | 1–2 |
-| A2 | `seated-dumbbell-shoulder-press` | main | 3 | 6–10 | 90 | 1 | double | 1–2 |
-| B1 | `neutral-grip-lat-pulldown` | accessory | 3 | 8–12 | 0 | 0 | double | 1–2 |
-| B2 | `flat-dumbbell-press` | main | 5 | 6–10 | 90 | 0 | double | 1–2 |
-| — | `cable-lateral-raise` | accessory | 3 | 12–20 | 60 | 0 | double | 1–2 |
-| — | `captains-chair-leg-raise` | finisher | 3 | 10–15 | 45 | 0 | reps | — |
+| slot | exercise                         | role      | sets | reps  | rest s | ramp | progression | RIR |
+| ---- | -------------------------------- | --------- | ---- | ----- | ------ | ---- | ----------- | --- |
+| —    | `scapular-pull-up`               | prep      | 2    | 8–12  | 60     | 0    | reps        | —   |
+| A1   | `band-assisted-pull-up`          | main      | 3    | 6–10  | 0      | 0    | bandAssist  | 1–2 |
+| A2   | `seated-dumbbell-shoulder-press` | main      | 3    | 6–10  | 90     | 1    | double      | 1–2 |
+| B1   | `neutral-grip-lat-pulldown`      | accessory | 3    | 8–12  | 0      | 0    | double      | 1–2 |
+| B2   | `flat-dumbbell-press`            | main      | 5    | 6–10  | 90     | 0    | double      | 1–2 |
+| —    | `cable-lateral-raise`            | accessory | 3    | 12–20 | 60     | 0    | double      | 1–2 |
+| —    | `captains-chair-leg-raise`       | finisher  | 3    | 10–15 | 45     | 0    | reps        | —   |
 
 `flat-dumbbell-press` substitutes to `chest-press-machine`; first 3 rounds pair with the pulldown,
 last 2 are straight sets.
@@ -325,14 +352,14 @@ last 2 are straight sets.
 
 ### Friday — Lower B · Leg Press Emphasis (`lowerB`)
 
-| slot | exercise | role | sets | reps | rest s | ramp | progression | RIR |
-|---|---|---|---|---|---|---|---|---|
-| — | `leg-press` | main | 3 | 6–10 | 135 | 2 | double | 1–2 |
-| B1 | `supported-split-squat` | accessory | 2 | 8–12 per side | 0 | 0 | double | 2 |
-| B2 | `seated-leg-curl` | accessory | 4 | 10–15 | 85 | 0 | double | 1–2 |
-| C1 | `hip-thrust` | accessory | 3 | 8–12 | 0 | 0 | double | 1–2 |
-| C2 | `standing-calf-raise` | accessory | 3 | 10–15 | 90 | 0 | double | 1–2 |
-| — | `tibialis-raise` | finisher | 2 | 15–20 | 45 | 0 | reps | — |
+| slot | exercise                | role      | sets | reps          | rest s | ramp | progression | RIR |
+| ---- | ----------------------- | --------- | ---- | ------------- | ------ | ---- | ----------- | --- |
+| —    | `leg-press`             | main      | 3    | 6–10          | 135    | 2    | double      | 1–2 |
+| B1   | `supported-split-squat` | accessory | 2    | 8–12 per side | 0      | 0    | double      | 2   |
+| B2   | `seated-leg-curl`       | accessory | 4    | 10–15         | 85     | 0    | double      | 1–2 |
+| C1   | `hip-thrust`            | accessory | 3    | 8–12          | 0      | 0    | double      | 1–2 |
+| C2   | `standing-calf-raise`   | accessory | 3    | 10–15         | 90     | 0    | double      | 1–2 |
+| —    | `tibialis-raise`        | finisher  | 2    | 15–20         | 45     | 0    | reps        | —   |
 
 `supported-split-squat` uses `entryStyle: 'repsPerSide'`, `perSide: true`, substitutes to `step-up`
 (never reverse lunges), and is marked `optional: true` — it is the documented first set to drop if

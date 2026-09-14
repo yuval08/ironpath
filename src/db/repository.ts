@@ -2,6 +2,8 @@ import { addDays, format, nextMonday, startOfDay } from 'date-fns';
 import { db, newId, nowIso, SETTINGS_ID } from './db';
 import { migrateAll } from './migrations';
 import { DEFAULT_PROGRAM_ID, programFor } from '@/data/programs';
+import { planUpdateStatus, rebuiltPlanPatch } from '@/data/programs/planSync';
+import { fingerprint } from '@/utils/fingerprint';
 // Single source of truth lives in @/utils/stats (pure, tested there). Re-exported
 // here because spec §8 has the screens import it alongside the plan API; the
 // dependency only runs repository -> stats, so there is no cycle.
@@ -77,12 +79,15 @@ export async function createPlanFromProgram(
   // plan has to be built in the unit the user actually trains in.
   const unit = weightUnit ?? (await getSettings())?.weightUnit ?? 'lb';
   const year = parseIsoDate(startDate).getFullYear();
+  const weeks = program.buildWeeks({ weightUnit: unit });
   const plan = base(newId('plan'), {
     name: program.name,
     startDate,
     currentWeek: 1,
     currentDayIndex: 0,
-    weeks: program.buildWeeks({ weightUnit: unit }),
+    weeks,
+    // Recorded so a later edit to the program can tell this plan was never touched.
+    builtFingerprint: fingerprint(weeks),
     // The travel window is part of the resilience block's own history; a plan
     // started from any other program begins with a clean calendar.
     pausePeriods:
@@ -104,6 +109,52 @@ export async function createPlanFromProgram(
   }) as WorkoutPlan;
   await db.plans.put(plan);
   return plan;
+}
+
+/**
+ * Moves every stored plan whose program changed onto the new build — but only the
+ * ones nobody edited in-app, which lose nothing by it. Plans with edits are left
+ * as they are for the user to update from the Plan screen.
+ *
+ * Each plan is re-read inside its own transaction: this runs at startup, and a
+ * second tab applying the same update must not rebuild on top of a stale copy.
+ */
+export async function syncPlansWithPrograms(): Promise<string[]> {
+  const unit = (await getSettings())?.weightUnit ?? 'lb';
+  const updated: string[] = [];
+  for (const { id } of await db.plans.toArray()) {
+    const applied = await db.transaction('rw', db.plans, async () => {
+      const row = await db.plans.get(id);
+      if (!row) return false;
+      const plan = migrateAll([row])[0]!;
+      const program = programFor(plan.programId);
+      if (planUpdateStatus(plan, program, unit) !== 'safe') return false;
+      await db.plans.put({
+        ...plan,
+        ...rebuiltPlanPatch(plan, program, unit),
+        updatedAt: nowIso(),
+      });
+      return true;
+    });
+    if (applied) updated.push(id);
+  }
+  return updated;
+}
+
+/**
+ * Applies the current program build to one plan even though it has in-app edits.
+ * Only ever called after the user has confirmed those edits will be replaced.
+ */
+export async function applyProgramUpdate(planId: string): Promise<void> {
+  const unit = (await getSettings())?.weightUnit ?? 'lb';
+  await db.transaction('rw', db.plans, async () => {
+    const row = await db.plans.get(planId);
+    if (!row) return;
+    const plan = migrateAll([row])[0]!;
+    const program = programFor(plan.programId);
+    if (!program.syncStoredPlans) return;
+    await db.plans.put({ ...plan, ...rebuiltPlanPatch(plan, program, unit), updatedAt: nowIso() });
+  });
 }
 
 /** activePlanId → first non-archived plan → first plan. */

@@ -491,7 +491,8 @@ describe('hypertrophy 14: superset wiring', () => {
 
   it('labels every superset member with its slot', () => {
     const members = allPrescriptions(hypertrophyWeeks).filter((p) => p.supersetKey != null);
-    expect(members.every((p) => /^[ABC][12]$/.test(p.slot ?? ''))).toBe(true);
+    // F is the arm/abs finisher pairing on both upper days.
+    expect(members.every((p) => /^[ABCF][12]$/.test(p.slot ?? ''))).toBe(true);
   });
 
   it('pairs only the rounds both members share, leaving the rest straight', () => {
@@ -515,6 +516,8 @@ describe('hypertrophy 14: weekly volume', () => {
     calves: ['standing-calf-raise'],
     tibialis: ['tibialis-raise'],
     abs: ['cable-crunch', 'captains-chair-leg-raise'],
+    biceps: ['cable-curl'],
+    triceps: ['rope-triceps-pressdown'],
   };
 
   const block = hypertrophyWeeks[2]!;
@@ -530,6 +533,8 @@ describe('hypertrophy 14: weekly volume', () => {
     expect(volume('calves')).toBe(6);
     expect(volume('tibialis')).toBe(4);
     expect(volume('abs')).toBe(6);
+    expect(volume('biceps')).toBe(3);
+    expect(volume('triceps')).toBe(3);
   });
 
   it('lands quad volume inside the prescribed 10-11 set band', () => {
@@ -547,13 +552,15 @@ describe('hypertrophy 14: weekly volume', () => {
     expect(absDays.map((d) => d.dayType)).toEqual(['upperA', 'upperB']);
   });
 
-  it('programs no direct arm work at launch', () => {
-    const armIds = /curl|triceps|pushdown|skull|kickback|preacher/i;
+  it('limits direct arm work to one curl and one pressdown', () => {
+    // The direct arm volume is deliberate: pulls and presses already load the arms,
+    // so nothing beyond these two finishers should creep in.
+    const armIds = /curl|triceps|pushdown|pressdown|skull|kickback|preacher/i;
     const arms = allPrescriptions(hypertrophyWeeks)
       .map((p) => p.exerciseId)
       // Leg curls are hamstrings, not arms.
       .filter((id) => armIds.test(id) && !id.includes('leg-curl'));
-    expect([...new Set(arms)]).toEqual([]);
+    expect([...new Set(arms)].sort()).toEqual(['cable-curl', 'rope-triceps-pressdown']);
   });
 });
 
@@ -663,7 +670,7 @@ describe('supersetGroups', () => {
       ['A1', 'A2'],
       ['B1', 'B2'],
       ['-'],
-      ['-'],
+      ['F1', 'F2'],
     ]);
   });
 });
@@ -723,5 +730,74 @@ describe('load steps follow the unit the plan was created in', () => {
       ?.days.flatMap((d) => d.prescriptions)
       .find((p) => p.exerciseId === 'incline-dumbbell-press');
     expect(stepped?.weightIncrement).toBe(5);
+  });
+});
+
+describe('hypertrophy 14: finishers', () => {
+  const finisher = (week: WeekPlan, dayType: string) =>
+    week.days
+      .find((d) => d.dayType === dayType)!
+      .prescriptions.filter((p) => p.supersetKey === `${dayType}-F`);
+
+  it('ends Upper A with Cable Crunch into Cable Curl, and Upper B with Leg Raise into Pressdown', () => {
+    const week = hypertrophyWeeks[2]!;
+    expect(finisher(week, 'upperA').map((p) => [p.slot, p.exerciseId])).toEqual([
+      ['F1', 'cable-crunch'],
+      ['F2', 'cable-curl'],
+    ]);
+    expect(finisher(week, 'upperB').map((p) => [p.slot, p.exerciseId])).toEqual([
+      ['F1', 'captains-chair-leg-raise'],
+      ['F2', 'rope-triceps-pressdown'],
+    ]);
+    // Both are the LAST thing on the day.
+    for (const dayType of ['upperA', 'upperB']) {
+      const day = week.days.find((d) => d.dayType === dayType)!;
+      expect(day.prescriptions.at(-1)?.slot).toBe('F2');
+    }
+  });
+
+  it('rests once, after the second exercise', () => {
+    for (const dayType of ['upperA', 'upperB']) {
+      const [first, second] = finisher(hypertrophyWeeks[2]!, dayType);
+      expect(first!.restSeconds).toBe(0);
+      expect(second!.restSeconds).toBeGreaterThanOrEqual(45);
+      expect(second!.restSeconds).toBeLessThanOrEqual(60);
+    }
+  });
+
+  it('runs 3 rounds in every hypertrophy week, 2 in reload week 1, 3 again by reload week 2', () => {
+    const rounds = (week: WeekPlan, dayType: string) =>
+      Math.min(...finisher(week, dayType).map((p) => p.sets));
+    for (const dayType of ['upperA', 'upperB']) {
+      expect(rounds(hypertrophyWeeks[0]!, dayType)).toBe(2);
+      expect(rounds(hypertrophyWeeks[1]!, dayType)).toBe(3);
+      for (const week of hypertrophyWeeks.filter((w) => w.phase === 'hypertrophy')) {
+        expect(rounds(week, dayType), week.title).toBe(3);
+      }
+    }
+  });
+
+  it('progresses the arm finishers by double progression up to 15 reps', () => {
+    for (const p of [
+      ...finisher(hypertrophyWeeks[2]!, 'upperA'),
+      ...finisher(hypertrophyWeeks[2]!, 'upperB'),
+    ]) {
+      if (p.exerciseId === 'captains-chair-leg-raise') continue;
+      expect(p.progressionType, p.exerciseId).toBe('double');
+      expect([p.repsLow, p.repsHigh], p.exerciseId).toEqual([10, 15]);
+      expect(p.weightIncrement, p.exerciseId).not.toBeNull();
+    }
+  });
+});
+
+describe('hypertrophy 14: ramp sets', () => {
+  it('offers one ramp before leg press and two before the Smith squat', () => {
+    const block = hypertrophyWeeks[2]!;
+    const ramps = (id: string) =>
+      block.days.flatMap((d) => d.prescriptions).find((p) => p.exerciseId === id)?.rampSets;
+    expect(ramps('leg-press')).toBe(1);
+    expect(ramps('smith-machine-squat')).toBe(2);
+    expect(ramps('incline-dumbbell-press')).toBe(1);
+    expect(ramps('seated-dumbbell-shoulder-press')).toBe(1);
   });
 });

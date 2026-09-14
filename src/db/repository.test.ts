@@ -21,7 +21,10 @@ import {
   projectedDate,
   recordPR,
   setActivePlan,
+  syncPlansWithPrograms,
+  applyProgramUpdate,
 } from './repository';
+import { fingerprint } from '@/utils/fingerprint';
 import { makeResult } from '@/test/factories';
 import { DEFAULT_BAND_LABELS, SCHEMA_VERSION } from '@/types';
 import type { WorkoutPlan } from '@/types';
@@ -446,8 +449,10 @@ describe('v1 → v2 record migration', () => {
     };
     const out = migrateRecord(v1) as unknown as WorkoutPlan;
 
-    expect(out.schemaVersion).toBe(2);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
     expect(out.programId).toBe('movement-resilience');
+    // v3: a plan from before build fingerprints is marked as having none.
+    expect(out.builtFingerprint).toBeNull();
     expect(out.archived).toBe(false);
     expect(out.weeks[0]).toMatchObject({ phase: 'base', blockWeek: null });
     expect(out.weeks[0]!.days[0]!.prescriptions[0]).toMatchObject({
@@ -480,7 +485,7 @@ describe('v1 → v2 record migration', () => {
 
   it('leaves rows that match none of the shapes alone', () => {
     const pr = { id: 'pr_1', schemaVersion: 1, kind: 'pushUpMaxSet', value: 20 };
-    expect(migrateRecord(pr)).toEqual({ ...pr, schemaVersion: 2 });
+    expect(migrateRecord(pr)).toEqual({ ...pr, schemaVersion: SCHEMA_VERSION });
   });
 
   it('does not re-run over a row that is already v2', () => {
@@ -564,5 +569,91 @@ describe('session results shape', () => {
           .sort(),
       ),
     );
+  });
+});
+
+describe('program updates reaching stored plans', () => {
+  beforeEach(reset);
+
+  /** Stores a hypertrophy plan as it looked before the arm finishers were added. */
+  async function storeOutdatedPlan(opts: { edited: boolean }) {
+    await ensureSeeded();
+    const plan = (await getPlans()).find((p) => p.programId === 'hypertrophy-14wk')!;
+    const old = structuredClone(plan.weeks);
+    for (const week of old) {
+      for (const day of week.days) {
+        day.prescriptions = day.prescriptions.filter((p) => p.exerciseId !== 'cable-curl');
+      }
+    }
+    const weeks = structuredClone(old);
+    if (opts.edited) weeks[0]!.days[0]!.prescriptions[0]!.sets = 4;
+    await db.plans.put({
+      ...plan,
+      weeks,
+      builtFingerprint: fingerprint(old),
+      currentWeek: 4,
+      currentDayIndex: 2,
+    });
+    return plan.id;
+  }
+
+  const hasCurl = (plan: WorkoutPlan) =>
+    plan.weeks.some((w) =>
+      w.days.some((d) => d.prescriptions.some((p) => p.exerciseId === 'cable-curl')),
+    );
+
+  it('stamps a new plan with the fingerprint of the weeks it was built with', async () => {
+    const plan = await createPlanFromProgram('hypertrophy-14wk');
+    expect(plan.builtFingerprint).toBe(fingerprint(plan.weeks));
+  });
+
+  it('applies the updated program to an unedited plan, keeping its place and its history', async () => {
+    const id = await storeOutdatedPlan({ edited: false });
+    const plan = (await getPlanById(id))!;
+    const day = plan.weeks[3]!.days[0]!;
+    const session = await createSession(plan, day);
+
+    expect(await syncPlansWithPrograms()).toEqual([id]);
+
+    const after = (await getPlanById(id))!;
+    expect(hasCurl(after)).toBe(true);
+    expect([after.currentWeek, after.currentDayIndex]).toEqual([4, 2]);
+    // The logged session still resolves against the rebuilt plan.
+    const stored = await db.sessions.get(session.id);
+    const rebuiltDay = after.weeks[3]!.days.find((d) => d.id === stored!.dayId)!;
+    for (const result of stored!.results) {
+      expect(rebuiltDay.prescriptions.some((p) => p.id === result.prescriptionId)).toBe(true);
+    }
+  });
+
+  it('is a no-op the second time, so startup does not rewrite the plan on every launch', async () => {
+    const id = await storeOutdatedPlan({ edited: false });
+    await syncPlansWithPrograms();
+    const first = (await getPlanById(id))!.updatedAt;
+    expect(await syncPlansWithPrograms()).toEqual([]);
+    expect((await getPlanById(id))!.updatedAt).toBe(first);
+  });
+
+  it('never silently overwrites a plan the user edited in-app', async () => {
+    const id = await storeOutdatedPlan({ edited: true });
+    expect(await syncPlansWithPrograms()).toEqual([]);
+    const after = (await getPlanById(id))!;
+    expect(hasCurl(after)).toBe(false);
+    expect(after.weeks[0]!.days[0]!.prescriptions[0]!.sets).toBe(4);
+  });
+
+  it('applies the update to an edited plan once the user asks for it', async () => {
+    const id = await storeOutdatedPlan({ edited: true });
+    await applyProgramUpdate(id);
+    const after = (await getPlanById(id))!;
+    expect(hasCurl(after)).toBe(true);
+    expect(after.builtFingerprint).toBe(fingerprint(after.weeks));
+  });
+
+  it('does not touch a Movement Resilience plan', async () => {
+    const legacy = await createPlanFromProgram('movement-resilience');
+    const before = (await getPlanById(legacy.id))!;
+    await syncPlansWithPrograms();
+    expect((await getPlanById(legacy.id))!.weeks).toEqual(before.weeks);
   });
 });

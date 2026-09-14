@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage } from '@/db/db';
-import { ensureSeeded } from '@/db/repository';
+import { ensureSeeded, syncPlansWithPrograms } from '@/db/repository';
 import { migrateAll } from '@/db/migrations';
 import type {
   FinalAssessment,
@@ -62,6 +62,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setStartupError(error as Error);
         return;
       }
+      // Deliberately non-fatal: if a program update cannot be applied, the plan the
+      // user already has is still a complete, trainable plan.
+      await syncPlansWithPrograms().catch((error: unknown) =>
+        console.error('[plans] could not apply program updates', error),
+      );
       const persisted = await requestPersistentStorage().catch(() => false);
       if (cancelled) return;
       setStoragePersisted(persisted);

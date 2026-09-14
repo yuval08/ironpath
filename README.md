@@ -56,12 +56,17 @@ whether persistence was granted.
 Four training days a week, weekday-mapped, 45–55 minutes per session. Wednesday and the weekend are
 rest days.
 
-| Day      | Session                               | Focus                                              |
-| -------- | ------------------------------------- | -------------------------------------------------- |
-| Monday   | Upper A · Pull-Up + Chest Emphasis    | Assisted pull-ups, incline pressing, rows, delts   |
-| Tuesday  | Lower A · Smith Squat Emphasis        | Squat pattern, hamstrings, quads, glutes, calves   |
-| Thursday | Upper B · Pull-Up + Shoulder Emphasis | Assisted pull-ups, overhead pressing, lats, chest  |
-| Friday   | Lower B · Leg Press Emphasis          | Leg press, split squat, hamstrings, glutes, calves |
+| Day      | Session                               | Focus                                                            |
+| -------- | ------------------------------------- | ---------------------------------------------------------------- |
+| Monday   | Upper A · Pull-Up + Chest Emphasis    | Assisted pull-ups, incline pressing, rows, delts, abs + biceps   |
+| Tuesday  | Lower A · Smith Squat Emphasis        | Squat pattern, hamstrings, quads, glutes, calves                 |
+| Thursday | Upper B · Pull-Up + Shoulder Emphasis | Assisted pull-ups, overhead pressing, lats, chest, abs + triceps |
+| Friday   | Lower B · Leg Press Emphasis          | Leg press, split squat, hamstrings, glutes, calves               |
+
+Both upper days end with a finisher superset run for 3 rounds (2 in reload week 1): Cable Crunch into
+Cable Curl on Upper A, Captain's-Chair Leg Raise into Rope Triceps Pressdown on Upper B. That is 3
+direct biceps and 3 direct triceps sets a week, on top of the indirect work from pulling and pressing —
+deliberately no more.
 
 Week structure: **1–2** reload (technique, then establishing starting loads) → **3–14** the twelve
 hypertrophy weeks → **15** deload. Week phases drive set counts and target RIR; each week carries its
@@ -89,6 +94,83 @@ strongly for adding load, not less. It only colours the wording. You confirm eve
 
 Band colours and resistances vary by manufacturer, so the six ladder positions are fixed but their
 names are yours: Settings → **Band names**. Renaming never changes the progression order.
+
+### Editing the program
+
+The program is data, not code: **`src/data/programs/definitions/hypertrophy-14wk.json`**. Change an
+exercise, a rep range, a rest period or a set count there and rebuild — nothing else to touch.
+
+The file describes one canonical week plus a schedule that scales it:
+
+```jsonc
+{
+  "days": [
+    {
+      "weekday": "monday",
+      "dayType": "upperA",
+      "title": "Upper A — Pull-Up + Chest",
+      "blocks": [
+        {
+          "key": "F",
+          "label": "Finisher — Abs + Biceps",
+          "superset": true,
+          "restSeconds": 60,
+          "exercises": [
+            {
+              "exercise": "cable-crunch",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "cable",
+            },
+            {
+              "exercise": "cable-curl",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "cable",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  "weeks": [
+    {
+      "phase": "reload",
+      "title": "Reload Week 1 — …",
+      "setCap": { "main": 2, "other": 2 },
+      "rir": [3, 3],
+      "rampSets": false,
+    },
+    { "phase": "hypertrophy", "repeat": 12, "title": "Hypertrophy Week {n}" },
+  ],
+}
+```
+
+- **Supersets** are a block with `"superset": true`. Rest goes on the block and happens after the last
+  exercise; slots (`F1`, `F2`) are derived. A member cannot declare its own rest — the file is rejected.
+- **`repeat`** expands one entry into consecutive weeks; `{n}` in the title becomes 1…repeat.
+- **`setCap`** limits working sets that week (`main` for `role: "main"`, `other` for the rest);
+  **`rir`** overrides every exercise's target that week.
+- **`loadStep`** names a jump (`dumbbell`, `cable`, …) defined per unit under `loadSteps`, so the
+  progression suggests a plate that exists in both lb and kg.
+- **`alternatives`** adds plan-specific "A or B" choices; **`keyLifts`** picks the lifts summarised on
+  the Progress screen.
+
+The file is validated when the app loads and by the test suite: an unknown exercise id, a misspelled
+key, a superset without rest or a load step missing a unit fails with the path to fix. New exercises go
+in `src/data/exercises.ts` first.
+
+**Updating a plan already on your phone.** A plan copies its weeks when it is created, so on launch
+Ironpath compares each stored plan with the current program file. If you never edited the plan on the
+Plan screen, the update is applied automatically — your place in the plan and every logged workout are
+kept. If you did edit it, the Plan screen offers the update instead of overwriting your changes.
+
+**Adding another program:** add a JSON file under `definitions/`, add its id to `programIdSchema` in
+`src/types/index.ts`, and register it with `compileProgram` in `src/data/programs/index.ts`.
 
 ---
 
@@ -199,7 +281,9 @@ src/
   components/     ExerciseCard, SetRow, WarmUp, PainScale, BandPicker, HistoryLine,
                   ProgressionBanner, VideoLink, Charts, Sheet, PauseManager, …
   data/
-    programs/     index.ts (registry) · hypertrophy14.ts · movementResilience.ts · timing.ts
+    programs/     index.ts (registry) · definitions/*.json (programs as data) ·
+                  compile.ts + programSchema.ts (JSON → plan) · planSync.ts (updating stored
+                  plans) · movementResilience.ts · timing.ts
     exercises.ts · exerciseVideos.ts · substitutions.ts
   db/             db.ts (Dexie) · repository.ts (all persistence) · migrations.ts
   hooks/          useTimers.ts (stopwatch + rest timer) · useTheme.ts
@@ -230,9 +314,9 @@ install's real data, so the name is deliberately left alone — only the app is 
 ### Program seeding
 
 Each program owns one canonical day template and generates all of its weeks from it, so there is no
-duplicated week data to drift. The hypertrophy program scales sets and target RIR per week phase;
-the resilience program applies per-week deltas. Everything stays editable per-day from the Plan
-screen.
+duplicated week data to drift. The hypertrophy program is compiled from its JSON file and scales sets
+and target RIR per week phase; the resilience program predates the JSON format, stays in TypeScript
+and applies per-week deltas. Everything stays editable per-day from the Plan screen.
 
 On first run Ironpath creates a hypertrophy plan and makes it active. On an install that predates
 Ironpath, the hypertrophy plan is added **once**, non-destructively, alongside the existing plan and

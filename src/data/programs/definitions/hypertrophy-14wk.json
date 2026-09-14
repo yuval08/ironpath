@@ -23,6 +23,16 @@
     }
   },
   "warmUp": [],
+  "keyLifts": [
+    "incline-dumbbell-press",
+    "flat-dumbbell-press",
+    "seated-dumbbell-shoulder-press",
+    "band-assisted-pull-up",
+    "smith-machine-squat",
+    "leg-press",
+    "cable-curl",
+    "rope-triceps-pressdown"
+  ],
   "days": [
     {
       "weekday": "monday",
@@ -49,6 +59,7 @@
           "key": "A",
           "label": "Superset A",
           "superset": true,
+          "restSeconds": 90,
           "exercises": [
             {
               "exercise": "band-assisted-pull-up",
@@ -71,13 +82,13 @@
               "rampSets": 1,
               "notes": "Only the first 3 sets pair with the pull-up; the last 2 are straight sets with full rest."
             }
-          ],
-          "restSeconds": 90
+          ]
         },
         {
           "key": "B",
           "label": "Superset B",
           "superset": true,
+          "restSeconds": 70,
           "exercises": [
             {
               "exercise": "chest-supported-row",
@@ -95,10 +106,10 @@
               "sets": 3,
               "reps": [12, 20],
               "rir": [1, 2],
-              "loadStep": "cable"
+              "loadStep": "cable",
+              "notes": "The last set may reach RIR 0–1."
             }
-          ],
-          "restSeconds": 70
+          ]
         },
         {
           "key": "C",
@@ -118,8 +129,10 @@
           ]
         },
         {
-          "key": "finisher",
-          "label": "Finisher",
+          "key": "F",
+          "label": "Finisher — Abs + Biceps",
+          "superset": true,
+          "restSeconds": 60,
           "exercises": [
             {
               "exercise": "cable-crunch",
@@ -129,7 +142,17 @@
               "reps": [10, 15],
               "rir": [1, 2],
               "loadStep": "cable",
-              "restSeconds": 45
+              "notes": "Straight into the curl — no rest between. Add resistance once all three sets reach 15 cleanly."
+            },
+            {
+              "exercise": "cable-curl",
+              "role": "finisher",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "cable",
+              "notes": "Controlled eccentric, full elbow extension when comfortable, no body swing. Add resistance once all three sets reach 15 cleanly. The last set may reach RIR 0–1."
             }
           ]
         }
@@ -163,6 +186,7 @@
           "key": "B",
           "label": "Superset B",
           "superset": true,
+          "restSeconds": 85,
           "exercises": [
             {
               "exercise": "seated-leg-curl",
@@ -172,7 +196,7 @@
               "reps": [10, 15],
               "rir": [1, 2],
               "loadStep": "stack",
-              "notes": "The only direct hamstring work in the program — do not skip it."
+              "notes": "The only direct hamstring work in the program — do not skip it. The last set may reach RIR 0–1."
             },
             {
               "exercise": "leg-extension",
@@ -181,15 +205,16 @@
               "sets": 3,
               "reps": [10, 15],
               "rir": [1, 2],
-              "loadStep": "stack"
+              "loadStep": "stack",
+              "notes": "The last set may reach RIR 0–1."
             }
-          ],
-          "restSeconds": 85
+          ]
         },
         {
           "key": "C",
           "label": "Superset C",
           "superset": true,
+          "restSeconds": 90,
           "exercises": [
             {
               "exercise": "hip-thrust",
@@ -207,10 +232,10 @@
               "sets": 3,
               "reps": [10, 15],
               "rir": [1, 2],
-              "loadStep": "stack"
+              "loadStep": "stack",
+              "notes": "The last set may reach RIR 0–1."
             }
-          ],
-          "restSeconds": 90
+          ]
         },
         {
           "key": "finisher",
@@ -253,6 +278,7 @@
           "key": "A",
           "label": "Superset A",
           "superset": true,
+          "restSeconds": 90,
           "exercises": [
             {
               "exercise": "band-assisted-pull-up",
@@ -274,13 +300,13 @@
               "loadStep": "dumbbell",
               "rampSets": 1
             }
-          ],
-          "restSeconds": 90
+          ]
         },
         {
           "key": "B",
           "label": "Superset B",
           "superset": true,
+          "restSeconds": 90,
           "exercises": [
             {
               "exercise": "neutral-grip-lat-pulldown",
@@ -301,8 +327,7 @@
               "loadStep": "dumbbell",
               "notes": "Only the first 3 sets pair with the pulldown; the last 2 are straight sets with full rest."
             }
-          ],
-          "restSeconds": 90
+          ]
         },
         {
           "key": "C",
@@ -316,13 +341,16 @@
               "reps": [12, 20],
               "rir": [1, 2],
               "loadStep": "cable",
-              "restSeconds": 60
+              "restSeconds": 60,
+              "notes": "The last set may reach RIR 0–1."
             }
           ]
         },
         {
-          "key": "finisher",
-          "label": "Finisher",
+          "key": "F",
+          "label": "Finisher — Abs + Triceps",
+          "superset": true,
+          "restSeconds": 60,
           "exercises": [
             {
               "exercise": "captains-chair-leg-raise",
@@ -330,8 +358,17 @@
               "progression": "reps",
               "sets": 3,
               "reps": [10, 15],
-              "restSeconds": 45,
-              "notes": "Back supported throughout. No hanging leg raises in this program."
+              "notes": "Back supported throughout. Lying leg raise if the chair is taken. No hanging leg raises — grip and lats have already done their work. Straight into the pressdown."
+            },
+            {
+              "exercise": "rope-triceps-pressdown",
+              "role": "finisher",
+              "progression": "double",
+              "sets": 3,
+              "reps": [10, 15],
+              "rir": [1, 2],
+              "loadStep": "cable",
+              "notes": "Controlled reps, full elbow extension, upper arms reasonably still. Add resistance once all three sets reach 15 cleanly. The last set may reach RIR 0–1."
             }
           ]
         }
@@ -355,9 +392,9 @@
               "reps": [6, 10],
               "rir": [1, 2],
               "loadStep": "legPress",
-              "rampSets": 2,
+              "rampSets": 1,
               "restSeconds": 135,
-              "notes": "Take full rest. Ramp up in two light sets before the first working set."
+              "notes": "Take full rest. One light ramp set before the first working set. Never supersetted."
             }
           ]
         },
@@ -365,6 +402,7 @@
           "key": "B",
           "label": "Superset B",
           "superset": true,
+          "restSeconds": 85,
           "exercises": [
             {
               "exercise": "supported-split-squat",
@@ -386,15 +424,16 @@
               "sets": 4,
               "reps": [10, 15],
               "rir": [1, 2],
-              "loadStep": "stack"
+              "loadStep": "stack",
+              "notes": "The last set may reach RIR 0–1."
             }
-          ],
-          "restSeconds": 85
+          ]
         },
         {
           "key": "C",
           "label": "Superset C",
           "superset": true,
+          "restSeconds": 90,
           "exercises": [
             {
               "exercise": "hip-thrust",
@@ -412,10 +451,10 @@
               "sets": 3,
               "reps": [10, 15],
               "rir": [1, 2],
-              "loadStep": "stack"
+              "loadStep": "stack",
+              "notes": "The last set may reach RIR 0–1."
             }
-          ],
-          "restSeconds": 90
+          ]
         },
         {
           "key": "finisher",

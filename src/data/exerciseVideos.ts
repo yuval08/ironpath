@@ -191,7 +191,11 @@ export const EXERCISE_VIDEOS: VideoReference[] = [
     'incline dumbbell press technique Renaissance Periodization',
     'Renaissance Periodization',
   ),
-  search('incline-smith-press', 'incline smith machine press technique', 'Renaissance Periodization'),
+  search(
+    'incline-smith-press',
+    'incline smith machine press technique',
+    'Renaissance Periodization',
+  ),
   search('flat-dumbbell-press', 'flat dumbbell bench press technique', 'Renaissance Periodization'),
   search('chest-press-machine', 'chest press machine setup technique', 'Renaissance Periodization'),
   search(
@@ -199,7 +203,11 @@ export const EXERCISE_VIDEOS: VideoReference[] = [
     'seated dumbbell shoulder press technique',
     'Renaissance Periodization',
   ),
-  search('cable-lateral-raise', 'cable lateral raise side delt technique', 'Renaissance Periodization'),
+  search(
+    'cable-lateral-raise',
+    'cable lateral raise side delt technique',
+    'Renaissance Periodization',
+  ),
   search('dumbbell-lateral-raise', 'dumbbell lateral raise technique', 'Renaissance Periodization'),
   search('chest-supported-row', 'chest supported row technique', 'Renaissance Periodization'),
   search(
@@ -208,7 +216,11 @@ export const EXERCISE_VIDEOS: VideoReference[] = [
     'Renaissance Periodization',
   ),
   search('cable-face-pull', 'cable face pull technique shoulder health E3 Rehab', 'E3 Rehab'),
-  search('smith-machine-squat', 'smith machine squat technique Squat University', 'Squat University'),
+  search(
+    'smith-machine-squat',
+    'smith machine squat technique Squat University',
+    'Squat University',
+  ),
   search('leg-press', 'leg press technique setup Squat University', 'Squat University'),
   search('leg-extension', 'leg extension technique knee health E3 Rehab', 'E3 Rehab'),
   search('seated-leg-curl', 'seated leg curl technique hamstrings', 'Renaissance Periodization'),
@@ -220,6 +232,8 @@ export const EXERCISE_VIDEOS: VideoReference[] = [
     'Calisthenicmovement',
   ),
   search('lying-leg-raise', 'lying leg raise technique lower abs', 'Calisthenicmovement'),
+  search('cable-curl', 'cable curl proper form biceps', 'Jeff Nippard'),
+  search('rope-triceps-pressdown', 'rope triceps pushdown proper form', 'Jeff Nippard'),
 ];
 
 const BY_ID: Record<string, VideoReference> = Object.fromEntries(

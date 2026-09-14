@@ -132,14 +132,17 @@ export function BarChart({
 export function ChartCard({
   title,
   subtitle,
+  id,
   children,
 }: {
   title: string;
   subtitle?: string;
+  /** Scroll target, e.g. for jumping to a chart from a summary row. */
+  id?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="card">
+    <div className="card" id={id}>
       <div className="card-title">
         <div>
           <h3>{title}</h3>

@@ -5,14 +5,16 @@ import { painLevel } from '@/utils/stats';
 import { Sheet } from './Sheet';
 import { VideoLink } from './VideoLink';
 import { PainScale } from './PainScale';
+import { ExerciseHistory } from './ExerciseHistory';
+import type { BandLabels, PerformanceSnapshot } from '@/utils/doubleProgression';
 import type { ExercisePrescription, ExerciseResult } from '@/types';
 
 /** Sentinel option value: an empty <option value> writes undefined back into the result. */
 const AS_PROGRAMMED = 'as-programmed';
 
 /**
- * Everything about an exercise that is *not* logging a set: technique, pain, form,
- * substitution, notes and skipping.
+ * Everything about an exercise that is *not* logging a set: recent history,
+ * technique, pain, form, substitution, notes and skipping.
  *
  * These used to sit inline under every card, which pushed the set inputs — the only
  * thing touched mid-set — off the screen. They are one tap away instead, and the
@@ -24,12 +26,19 @@ export function ExerciseOptionsSheet({
   onClose,
   prescription,
   result,
+  history = [],
+  weightUnit = 'lb',
+  bandLabels,
   onChange,
 }: {
   open: boolean;
   onClose: () => void;
   prescription: ExercisePrescription;
   result: ExerciseResult;
+  /** Recent performances, newest first. */
+  history?: PerformanceSnapshot[];
+  weightUnit?: string;
+  bandLabels?: BandLabels;
   onChange: (next: ExerciseResult) => void;
 }) {
   const activeId = result.substitutionExerciseId ?? result.exerciseId;
@@ -41,6 +50,11 @@ export function ExerciseOptionsSheet({
 
   return (
     <Sheet open={open} title={exerciseName(activeId)} onClose={onClose}>
+      {/* First, because it is what gets checked mid-session: what did I do last time? */}
+      <ExerciseHistory history={history} weightUnit={weightUnit} bandLabels={bandLabels} />
+
+      <div className="divider" />
+
       <VideoLink
         exerciseId={activeId}
         compact

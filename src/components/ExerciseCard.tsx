@@ -16,6 +16,7 @@ import { ExerciseOptionsSheet, hasExerciseOptions } from './ExerciseOptionsSheet
 import { HistoryLine } from './HistoryLine';
 import { ProgressionBanner } from './ProgressionBanner';
 import { BandPicker } from './BandPicker';
+import { setHint } from '@/utils/doubleProgression';
 import type {
   BandLabels,
   PerformanceSnapshot,
@@ -34,6 +35,10 @@ interface Props {
   onRest: (seconds: number) => void;
   /** Last logged performance of this exercise, for the history line. */
   lastSnapshot?: PerformanceSnapshot | null;
+  /** The last time this exercise was logged; its sets become the row placeholders. */
+  previous?: ExerciseResult | null;
+  /** Recent performances, newest first, for the history in the options sheet. */
+  history?: PerformanceSnapshot[];
   /** Verdict from the previous session; only 'ready' renders a banner. */
   verdict?: ProgressionVerdict | null;
   bandLabels?: BandLabels;
@@ -66,6 +71,8 @@ export function ExerciseCard({
   onChange,
   onRest,
   lastSnapshot = null,
+  previous = null,
+  history = [],
   verdict = null,
   bandLabels,
   pairedRounds = null,
@@ -226,6 +233,7 @@ export function ExerciseCard({
                   showLabels={i === 0}
                   label={`R${i + 1}`}
                   labelFull={`Ramp ${i + 1}`}
+                  hint={setHint(previous, i, true)}
                   muted
                   onChange={(next) => updateSet(result.sets.indexOf(set), next)}
                   onToggle={() => toggleSet(result.sets.indexOf(set))}
@@ -250,6 +258,7 @@ export function ExerciseCard({
                 showLabels={i === 0 && ramp.length === 0}
                 label={`${i + 1}`}
                 labelFull={`${i + 1} of ${working.length}`}
+                hint={setHint(previous, i)}
                 onChange={(next) => updateSet(result.sets.indexOf(set), next)}
                 onToggle={() => toggleSet(result.sets.indexOf(set))}
               />
@@ -278,7 +287,7 @@ export function ExerciseCard({
             </button>
             <button
               className={`btn small ghost icon options-btn ${optionsSet ? 'has-values' : ''}`}
-              aria-label="More options — technique, pain, form, notes"
+              aria-label="More options — history, technique, pain, form, notes"
               onClick={() => setOptionsOpen(true)}
             >
               <Plus size={16} />
@@ -301,6 +310,9 @@ export function ExerciseCard({
             onClose={() => setOptionsOpen(false)}
             prescription={prescription}
             result={result}
+            history={history}
+            weightUnit={weightUnit}
+            bandLabels={bandLabels}
             onChange={onChange}
           />
         </div>

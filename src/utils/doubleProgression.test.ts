@@ -10,8 +10,11 @@ import {
   lastPerformance,
   nextLighterBand,
   performanceHistory,
+  previousResult,
   progressionReps,
   rampSetsOf,
+  recentPerformances,
+  setHint,
   snapshotFor,
   workingSets,
 } from './doubleProgression';
@@ -112,13 +115,16 @@ describe('snapshots and history', () => {
 
   it('reads the working sets only', () => {
     const snap = snapshotFor(session, session.results[0]!);
-    expect(snap).toEqual({
+    expect(snap).toMatchObject({
       date: '2026-08-03',
       weight: 32,
       band: null,
       reps: [10, 9, 8],
       rir: [2, 1, 1],
     });
+    // The per-set record carries the same working sets, and no ramp set.
+    expect(snap.sets.map((s) => s.reps)).toEqual([10, 9, 8]);
+    expect(snap.sets.some((s) => s.isWarmUp)).toBe(false);
   });
 
   it('returns history oldest first and lastPerformance as the newest', () => {
@@ -167,6 +173,7 @@ describe('formatPerformance', () => {
       band: null,
       reps: [10, 9, 8],
       rir: [2, 1, 1],
+      sets: [],
     };
     expect(formatPerformance(snap, 'kg')).toBe('32 kg · 10 / 9 / 8 · RIR 2 / 1 / 1');
   });
@@ -178,6 +185,7 @@ describe('formatPerformance', () => {
       band: 'medium' as const,
       reps: [9, 8, 8],
       rir: [null, null, null],
+      sets: [],
     };
     expect(formatPerformance(snap, 'kg')).toBe('Medium band · 9 / 8 / 8');
   });
@@ -189,6 +197,7 @@ describe('formatPerformance', () => {
       band: 'heavy' as const,
       reps: [6],
       rir: [],
+      sets: [],
     };
     expect(
       formatPerformance(snap, 'kg', {
@@ -211,13 +220,21 @@ describe('formatPerformance', () => {
       band,
       reps: [8],
       rir: [],
+      sets: [],
     });
     expect(formatPerformance(snap('heavy'), 'kg', partial)).toBe('Red band · 8');
     expect(formatPerformance(snap('light'), 'kg', partial)).toBe('Light band · 8');
   });
 
   it('says bodyweight rather than "No band band"', () => {
-    const snap = { date: 'x', weight: null, band: 'none' as const, reps: [7, 6], rir: [] };
+    const snap = {
+      date: 'x',
+      weight: null,
+      band: 'none' as const,
+      reps: [7, 6],
+      rir: [],
+      sets: [],
+    };
     expect(formatPerformance(snap, 'kg')).toBe('Bodyweight · 7 / 6');
   });
 
@@ -428,5 +445,51 @@ describe('evaluateDoubleProgression — band assistance', () => {
     const verdict = evaluateDoubleProgression(bandPresc(), bandResult('medium', 8));
     expect(verdict.status).toBe('hold');
     expect(verdict.suggestedBand).toBeNull();
+  });
+});
+
+describe('set placeholders and recent history', () => {
+  const lastWeek = makeSession({
+    date: '2026-08-03',
+    results: [
+      {
+        ...makeResult('incline-dumbbell-press', [
+          { reps: 10, weight: 32, rir: 2 },
+          { reps: 9, weight: 32, rir: 1 },
+        ]),
+      },
+    ],
+  });
+
+  it('echoes the same set from last time', () => {
+    const previous = previousResult([lastWeek], 'incline-dumbbell-press');
+    expect(setHint(previous, 0)).toMatchObject({ weight: 32, reps: 10 });
+    expect(setHint(previous, 1)).toMatchObject({ weight: 32, reps: 9 });
+  });
+
+  it('falls back to the last set logged when this session has more sets than that one did', () => {
+    const previous = previousResult([lastWeek], 'incline-dumbbell-press');
+    // Reload week 1 logged two sets; the third row of a full week still gets a hint.
+    expect(setHint(previous, 2)).toMatchObject({ weight: 32, reps: 9 });
+  });
+
+  it('gives no hint for an exercise never logged', () => {
+    expect(setHint(previousResult([lastWeek], 'cable-curl'), 0)).toBeNull();
+  });
+
+  it('lists recent performances newest first, capped', () => {
+    const sessions = [1, 2, 3, 4].map((n) =>
+      makeSession({
+        id: `s${n}`,
+        date: `2026-08-0${n}`,
+        startedAt: `2026-08-0${n}T10:00:00.000Z`,
+        results: [makeResult('cable-curl', [{ reps: 10 + n, weight: 20 }])],
+      }),
+    );
+    expect(recentPerformances(sessions, 'cable-curl', 3).map((p) => p.date)).toEqual([
+      '2026-08-04',
+      '2026-08-03',
+      '2026-08-02',
+    ]);
   });
 });

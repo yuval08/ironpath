@@ -96,12 +96,23 @@ function toV2(row: Record<string, unknown>): Record<string, unknown> {
   return row;
 }
 
+/** v2 -> v3: plans remember the fingerprint of the weeks they were built with. */
+function toV3(row: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(row.weeks)) return row;
+  return { ...row, builtFingerprint: row.builtFingerprint ?? null };
+}
+
 export const MIGRATIONS: RecordMigration[] = [
   {
     to: 2,
     describe:
       'Ironpath schema v2 — multi-program plans, superset/progression metadata, ramp sets, band labels',
     migrate: toV2,
+  },
+  {
+    to: 3,
+    describe: 'Plans record a build fingerprint so program updates can be applied safely',
+    migrate: toV3,
   },
 ];
 

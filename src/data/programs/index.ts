@@ -29,6 +29,13 @@ export interface ProgramDefinition {
    * in has to be known here — nothing converts stored weights later.
    */
   buildWeeks: (options?: BuildOptions) => WeekPlan[];
+  /**
+   * Whether plans already stored on a device follow edits to this program. True for
+   * programs maintained as data; the TypeScript resilience block opts out.
+   */
+  syncStoredPlans?: boolean;
+  /** Exercises summarised at the top of the Progress screen. */
+  keyLifts?: string[];
 }
 
 /**

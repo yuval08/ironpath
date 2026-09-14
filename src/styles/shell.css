@@ -239,3 +239,44 @@
   font-weight: 800;
   text-align: center;
 }
+
+/* ------------------------------------------------------------- key lifts */
+.key-lifts {
+  display: grid;
+}
+
+.key-lift {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.key-lift:last-child {
+  border-bottom: 0;
+}
+
+.key-lift-text {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.key-lift-name {
+  font-weight: 600;
+}
+
+.key-lift-change {
+  color: var(--accent);
+  font-weight: 600;
+}

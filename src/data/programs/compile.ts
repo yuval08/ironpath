@@ -160,6 +160,15 @@ function scheduleWeeks(weeks: ProgramWeekJson[]): ScheduledWeek[] {
 }
 
 function assertExercisesExist(program: ProgramDefinitionJson): void {
+  const prescribed = new Set(
+    program.days.flatMap((d) => d.blocks.flatMap((b) => b.exercises.map((e) => e.exercise))),
+  );
+  for (const lift of program.keyLifts) {
+    // A key lift the plan never trains would be a permanently empty row.
+    if (!prescribed.has(lift)) {
+      throw new Error(`Program "${program.id}": key lift "${lift}" is not prescribed on any day.`);
+    }
+  }
   for (const day of program.days) {
     for (const block of day.blocks) {
       for (const exercise of block.exercises) {
@@ -225,5 +234,7 @@ export function compileProgram(raw: unknown, id: ProgramId): ProgramDefinition {
     warmUp: program.warmUp,
     dayLabels,
     buildWeeks,
+    keyLifts: program.keyLifts,
+    syncStoredPlans: true,
   };
 }

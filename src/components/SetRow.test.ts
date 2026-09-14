@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { canBeLoaded, fieldsFor } from '/mnt/dev/tools/wopwa/src/components/SetRow';
+import { makeSet } from '@/test/factories';
+import { applyField, canBeLoaded, fieldsFor } from './SetRow';
 
 describe('set fields by load type', () => {
   it('offers no weight box for a push-up', () => {
@@ -66,5 +67,38 @@ describe('effort column', () => {
         expect(fieldsFor(style, 'kg', load, 'rir').length).toBeLessThanOrEqual(4);
       }
     }
+  });
+});
+
+describe('RIR-prescribed exercises without load', () => {
+  it('drops the RPE column, leaving reps and RIR', () => {
+    // The band-assisted pull-up: RIR is what the block prescribes, RPE was a dead box.
+    expect(fieldsFor('reps', 'lb', 'band', 'rir').map((f) => f.key)).toEqual(['reps', 'rir']);
+  });
+
+  it('keeps both for the resilience block, which logs RPE', () => {
+    expect(fieldsFor('reps', 'lb', 'bodyweight', 'rpe').map((f) => f.key)).toEqual([
+      'reps',
+      'rpe',
+      'rir',
+    ]);
+  });
+});
+
+describe('applyField', () => {
+  const blank = makeSet({ repsLeft: null, repsRight: null });
+
+  it('fills the right side from the left when both sides are the same', () => {
+    expect(applyField(blank, 'repsLeft', 10)).toMatchObject({ repsLeft: 10, repsRight: 10 });
+  });
+
+  it('keeps mirroring while the right still matches the left', () => {
+    const both = applyField(blank, 'repsLeft', 10);
+    expect(applyField(both, 'repsLeft', 11)).toMatchObject({ repsLeft: 11, repsRight: 11 });
+  });
+
+  it('never overwrites a right side the user set on its own', () => {
+    const own = applyField(applyField(blank, 'repsLeft', 10), 'repsRight', 8);
+    expect(applyField(own, 'repsLeft', 12)).toMatchObject({ repsLeft: 12, repsRight: 8 });
   });
 });
