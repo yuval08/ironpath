@@ -1,0 +1,74 @@
+{
+  "id": "my-upper-plan",
+  "idPrefix": "my-upper",
+  "name": "Upper Body — Four Weeks",
+  "shortName": "Upper 4",
+  "description": "Three training weeks followed by a lighter week.",
+  "loadSteps": { "kg": { "dumbbell": 2 }, "lb": { "dumbbell": 5 } },
+  "timing": { "secondsPerRep": 4, "transitionSeconds": 30, "intraSupersetSeconds": 10 },
+  "warmUp": [{ "id": "general", "label": "Complete your general warm-up" }],
+  "keyLifts": ["incline-dumbbell-press"],
+  "days": [
+    {
+      "weekday": "monday",
+      "dayType": "upperA",
+      "title": "Upper Body",
+      "focus": "Press, arms, and core",
+      "blocks": [
+        {
+          "key": "main",
+          "label": "Main lift",
+          "restSeconds": 120,
+          "exercises": [
+            {
+              "exercise": "incline-dumbbell-press",
+              "role": "main",
+              "progression": "double",
+              "sets": 3,
+              "reps": [8, 12],
+              "rir": [1, 2],
+              "loadStep": "dumbbell",
+              "rampSets": 2
+            }
+          ]
+        },
+        {
+          "key": "A",
+          "label": "Arm superset",
+          "superset": true,
+          "restSeconds": 90,
+          "exercises": [
+            { "exercise": "cable-curl", "sets": 3, "reps": [10, 15], "rir": [1, 2] },
+            { "exercise": "rope-triceps-pressdown", "sets": 3, "reps": [10, 15], "rir": [1, 2] }
+          ]
+        },
+        {
+          "key": "core",
+          "label": "Timed core",
+          "restSeconds": 60,
+          "exercises": [
+            {
+              "exercise": "dead-hang",
+              "sets": 2,
+              "seconds": [20, 30],
+              "entryStyle": "time",
+              "progression": "time"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "weeks": [
+    { "phase": "hypertrophy", "repeat": 3, "title": "Training {n}", "focus": "Build gradually" },
+    {
+      "phase": "deload",
+      "title": "Deload",
+      "focus": "Recover",
+      "setCap": { "main": 2, "other": 1 },
+      "rir": [3, 4],
+      "rampSets": false,
+      "guidance": ["Use lighter loads and keep every rep controlled."]
+    }
+  ]
+}

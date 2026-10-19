@@ -30,7 +30,7 @@ export default function PlanScreen() {
 
   if (!plan || !settings) return null;
 
-  const program = programFor(plan.programId);
+  const program = programFor(plan);
 
   const applyChoice = async (choice: ResumeChoice) => {
     const labels: Record<ResumeChoice, string> = {

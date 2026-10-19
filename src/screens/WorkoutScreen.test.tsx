@@ -5,6 +5,7 @@ import { makePlan, makeResult, makeSession, makeSettings } from '@/test/factorie
 import { db } from '@/db/db';
 import { completeSession, getSuggestions } from '@/db/repository';
 import WorkoutScreen from './WorkoutScreen';
+import { WorkoutAlertsProvider } from '@/state/WorkoutAlertsProvider';
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), toast: vi.fn(), data: {} as unknown }));
 vi.mock('react-router-dom', () => ({
@@ -54,7 +55,13 @@ async function render(openFinish = true) {
     await act(async () => root.unmount());
     host.remove();
   };
-  await act(async () => root.render(<WorkoutScreen />));
+  await act(async () =>
+    root.render(
+      <WorkoutAlertsProvider>
+        <WorkoutScreen />
+      </WorkoutAlertsProvider>,
+    ),
+  );
   await act(async () => {
     await db.sessions.get('session_test');
   });

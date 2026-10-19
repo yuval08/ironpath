@@ -541,7 +541,7 @@ test.describe('export and backup', () => {
 
     await page.getByRole('link', { name: 'More' }).click();
     await page.getByRole('button', { name: /Settings & Backup/ }).click();
-    await page.locator('input[type="file"][accept*="json"]').setInputFiles(backupPath);
+    await page.getByLabel('Import workout backup JSON file').setInputFiles(backupPath);
     await expect(page.getByText(/Restored 1 sessions/)).toBeVisible();
 
     await page.getByRole('link', { name: 'Home' }).click();

@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, Pause, Play, Plus, X } from 'lucide-react';
 import { useAppData } from '@/state/AppDataProvider';
 import { useToast } from '@/state/ToastProvider';
-import { useRestTimer, useStopwatch, REST_PRESETS } from '@/hooks/useTimers';
+import { useStopwatch, REST_PRESETS } from '@/hooks/useTimers';
+import { useWorkoutAlerts } from '@/state/WorkoutAlertsProvider';
 import { ExerciseCard } from '@/components/ExerciseCard';
 import { SupersetGroup } from '@/components/SupersetGroup';
 import type { SupersetMember } from '@/components/SupersetGroup';
@@ -66,10 +67,7 @@ export default function WorkoutScreen() {
   const finishingRef = useRef(false);
 
   const stopwatch = useStopwatch(0, false);
-  const rest = useRestTimer({
-    vibrate: settings?.vibrateOnRestEnd ?? true,
-    sound: settings?.soundOnRestEnd ?? false,
-  });
+  const { rest } = useWorkoutAlerts();
 
   /* ---------------------------------------------------------- loading */
   useEffect(() => {
@@ -252,6 +250,7 @@ export default function WorkoutScreen() {
     };
     try {
       finished = await completeSession(finished);
+      rest.stop();
     } catch {
       finishingRef.current = false;
       setFinishing(false);
@@ -360,7 +359,7 @@ export default function WorkoutScreen() {
 
       <WarmUp
         items={session.warmUp}
-        catalog={programFor(plan.programId).warmUp}
+        catalog={programFor(plan).warmUp}
         finished={warmUpDone}
         onChange={(warmUp) => patchSession({ warmUp })}
         onFinish={() => {

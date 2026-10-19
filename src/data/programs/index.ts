@@ -1,4 +1,4 @@
-import type { DayType, ProgramId, WeightUnit, WeekPlan } from '@/types';
+import type { DayType, ProgramId, WeightUnit, WeekPlan, WorkoutPlan } from '@/types';
 import type { WarmUpItem } from './timing';
 import { movementResilienceProgram } from './movementResilience';
 import { compileProgram } from './compile';
@@ -47,7 +47,7 @@ export interface ProgramDefinition {
  */
 const hypertrophy14Program = compileProgram(hypertrophy14Json, 'hypertrophy-14wk');
 
-export const PROGRAMS: Record<ProgramId, ProgramDefinition> = {
+export const PROGRAMS: Record<Exclude<ProgramId, 'custom'>, ProgramDefinition> = {
   'movement-resilience': movementResilienceProgram,
   'hypertrophy-14wk': hypertrophy14Program,
 };
@@ -57,7 +57,27 @@ export const PROGRAMS: Record<ProgramId, ProgramDefinition> = {
  * reaches here without a `programId` is real user history, and refusing to render
  * it would be worse than rendering it as the block it was actually written for.
  */
-export function programFor(id: ProgramId): ProgramDefinition {
+export function programFor(source: ProgramId | WorkoutPlan): ProgramDefinition {
+  const id = typeof source === 'string' ? source : source.programId;
+  if (id === 'custom') {
+    if (typeof source === 'string')
+      throw new Error('Imported programs must be resolved from their plan.');
+    const labels = { ...movementResilienceProgram.dayLabels };
+    for (const day of source.weeks[0]?.days ?? []) labels[day.dayType] = day.title;
+    return {
+      id,
+      name: source.name,
+      shortName: source.importedProgram?.shortName ?? source.name,
+      description: source.importedProgram?.description ?? '',
+      weekCount: source.weeks.length,
+      daysPerWeek: source.weeks[0]?.days.length ?? 0,
+      warmUp: source.importedProgram?.warmUp ?? [],
+      keyLifts: source.importedProgram?.keyLifts ?? [],
+      dayLabels: labels,
+      buildWeeks: () => source.weeks,
+      syncStoredPlans: false,
+    };
+  }
   return PROGRAMS[id] ?? PROGRAMS['movement-resilience'];
 }
 

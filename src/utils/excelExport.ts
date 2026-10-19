@@ -141,7 +141,7 @@ export function plansOf(input: ExportInput): WorkoutPlan[] {
 }
 
 export function programName(plan: WorkoutPlan): string {
-  return programFor(plan.programId).name;
+  return programFor(plan).name;
 }
 
 const PHASE_LABELS: Record<WeekPlan['phase'], string> = {
@@ -340,7 +340,7 @@ function summarySheet(wb: ExcelJS.Workbook, input: ExportInput): void {
   notesHeader.fill = SECTION_FILL;
   const dayLabelFor = (session: WorkoutSession): string => {
     const plan = plans.find((p) => p.id === session.planId) ?? plans[0];
-    const labels = plan ? programFor(plan.programId).dayLabels : undefined;
+    const labels = plan ? programFor(plan).dayLabels : undefined;
     return labels?.[session.dayType] ?? session.dayType;
   };
   for (const session of done.filter((s) => s.sessionNotes.trim())) {
@@ -424,7 +424,7 @@ function sessionsSheet(wb: ExcelJS.Workbook, input: ExportInput): void {
 
   for (const plan of plans) {
     const days = dayIndex(plan);
-    const program = programFor(plan.programId);
+    const program = programFor(plan);
     for (const session of byStart(byPlan.get(plan.id) ?? [])) {
       const located = days.get(session.dayId);
       const working = session.results.flatMap(workingSetsOf);
@@ -520,7 +520,7 @@ function setsSheet(wb: ExcelJS.Workbook, input: ExportInput): void {
   const labels = input.settings.bandLabels;
 
   for (const plan of plans) {
-    const program = programFor(plan.programId);
+    const program = programFor(plan);
     const days = dayIndex(plan);
     for (const session of byStart(byPlan.get(plan.id) ?? [])) {
       if (session.status === 'abandoned') continue;
@@ -611,7 +611,7 @@ function weekSheets(wb: ExcelJS.Workbook, input: ExportInput, used: Set<string>)
   const prefixed = plans.length > 1;
 
   for (const plan of plans) {
-    const program = programFor(plan.programId);
+    const program = programFor(plan);
     const planSessions = byPlan.get(plan.id) ?? [];
 
     for (const week of plan.weeks) {
@@ -807,7 +807,7 @@ function painSheet(wb: ExcelJS.Workbook, input: ExportInput): void {
   const plans = plansOf(input);
   const labelFor = (session: WorkoutSession): string => {
     const plan = plans.find((p) => p.id === session.planId) ?? plans[0];
-    const labels = plan ? programFor(plan.programId).dayLabels : undefined;
+    const labels = plan ? programFor(plan).dayLabels : undefined;
     return labels?.[session.dayType] ?? session.dayType;
   };
 

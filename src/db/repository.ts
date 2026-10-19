@@ -57,6 +57,8 @@ function defaultSettings(): UserSettings {
     restDefaultSeconds: 60,
     vibrateOnRestEnd: true,
     soundOnRestEnd: false,
+    keepScreenOn: false,
+    notifyOnRestEnd: false,
     bodyweight: null,
     firstStrictPullUpDate: null,
     disclaimerAcknowledged: false,
@@ -127,7 +129,7 @@ export async function syncPlansWithPrograms(): Promise<string[]> {
       const row = await db.plans.get(id);
       if (!row) return false;
       const plan = migrateAll([row])[0]!;
-      const program = programFor(plan.programId);
+      const program = programFor(plan);
       if (planUpdateStatus(plan, program, unit) !== 'safe') return false;
       await db.plans.put({
         ...plan,
@@ -151,7 +153,7 @@ export async function applyProgramUpdate(planId: string): Promise<void> {
     const row = await db.plans.get(planId);
     if (!row) return;
     const plan = migrateAll([row])[0]!;
-    const program = programFor(plan.programId);
+    const program = programFor(plan);
     if (!program.syncStoredPlans) return;
     await db.plans.put({ ...plan, ...rebuiltPlanPatch(plan, program, unit), updatedAt: nowIso() });
   });
@@ -280,7 +282,8 @@ export async function updateSettings(patch: Partial<UserSettings>): Promise<void
         Object.keys(current.weightOverrides).length > 0 ||
         (await getPlans()).some(
           (plan) =>
-            planUpdateStatus(plan, programFor(plan.programId), current.weightUnit) === 'edited' ||
+            plan.programId === 'custom' ||
+            planUpdateStatus(plan, programFor(plan), current.weightUnit) === 'edited' ||
             (plan.builtFingerprint != null && fingerprint(plan.weeks) !== plan.builtFingerprint) ||
             plan.weeks.some((week) =>
               week.days.some((day) =>
@@ -293,7 +296,7 @@ export async function updateSettings(patch: Partial<UserSettings>): Promise<void
     }
     if (patch.weightUnit && patch.weightUnit !== current.weightUnit) {
       for (const plan of await getPlans()) {
-        const program = programFor(plan.programId);
+        const program = programFor(plan);
         if (!program.syncStoredPlans) continue;
         await db.plans.put({
           ...plan,
@@ -503,7 +506,7 @@ export async function createSession(
     elapsedSeconds: 0,
     // Per-program: the hypertrophy program ships an empty list because its general
     // warm-up is deliberately done outside the app timer.
-    warmUp: programFor(plan.programId).warmUp.map((w) => ({
+    warmUp: programFor(plan).warmUp.map((w) => ({
       id: w.id,
       label: w.label,
       completed: false,

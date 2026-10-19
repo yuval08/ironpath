@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Archive, ArchiveRestore, Check, Plus, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Archive, ArchiveRestore, Check, Plus, Trash2, Upload } from 'lucide-react';
 import { useAppData } from '@/state/AppDataProvider';
 import { useToast } from '@/state/ToastProvider';
 import { Sheet } from '@/components/Sheet';
@@ -12,13 +12,15 @@ import {
   setActivePlan,
   totalSessionsFor,
 } from '@/db/repository';
+import { importPlan, MAX_PLAN_FILE_BYTES } from '@/utils/planImport';
+import { readJsonFile } from '@/utils/backup';
 import { completedSessions } from '@/utils/stats';
 import type { ProgramId, WorkoutPlan } from '@/types';
 
 /** Typing this exactly is what unlocks the delete button. */
 const DELETE_PHRASE = 'DELETE';
 
-const PROGRAM_IDS = Object.keys(PROGRAMS) as ProgramId[];
+const PROGRAM_IDS = Object.keys(PROGRAMS) as Exclude<ProgramId, 'custom'>[];
 
 /**
  * The one place a plan is switched, created, archived or deleted. It reads the
@@ -28,6 +30,24 @@ const PROGRAM_IDS = Object.keys(PROGRAMS) as ProgramId[];
 export function PlanSwitcher() {
   const { plan: activePlan, plans, sessions } = useAppData();
   const { toast } = useToast();
+  const planInput = useRef<HTMLInputElement>(null);
+  const importingRef = useRef(false);
+  const [importing, setImporting] = useState(false);
+  const importFile = async (file: File) => {
+    if (importingRef.current) return;
+    importingRef.current = true;
+    setImporting(true);
+    try {
+      if (file.size > MAX_PLAN_FILE_BYTES) throw new Error('Plan files must be 1 MiB or smaller.');
+      const plan = await importPlan(await readJsonFile(file));
+      toast(`Imported ${plan.name} and made it active`);
+    } catch (error) {
+      toast(`Import failed: ${(error as Error).message}`);
+    } finally {
+      importingRef.current = false;
+      setImporting(false);
+    }
+  };
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<WorkoutPlan | null>(null);
 
@@ -62,7 +82,7 @@ export function PlanSwitcher() {
                 aria-pressed={isActive}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="plan-name">{programFor(p.programId).name}</div>
+                  <div className="plan-name">{programFor(p).name}</div>
                   <div className="muted tiny">
                     Week {p.currentWeek} of {p.weeks.length} · {done}/{total} sessions
                     {p.completedAt ? ' · finished' : ''}
@@ -93,6 +113,27 @@ export function PlanSwitcher() {
           <button className="btn primary small block" onClick={() => setCreating(true)}>
             <Plus size={15} /> Start a new plan
           </button>
+        </div>
+        <div className="plan-actions">
+          <button
+            className="btn small block"
+            disabled={importing}
+            onClick={() => planInput.current?.click()}
+          >
+            <Upload size={15} /> {importing ? 'Importing…' : 'Import plan from JSON'}
+          </button>
+          <input
+            ref={planInput}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            aria-label="Import plan JSON file"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void importFile(file);
+            }}
+          />
         </div>
       </div>
 
@@ -207,7 +248,7 @@ function DeletePlanForm({
   return (
     <div className="stack">
       <div className="banner danger">
-        <strong>{programFor(plan.programId).name}</strong>
+        <strong>{programFor(plan).name}</strong>
         <br />
         Deleting this plan also deletes the {sessionCount} session
         {sessionCount === 1 ? '' : 's'} logged against it, and its final assessment. This cannot be

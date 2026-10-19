@@ -23,7 +23,7 @@ export function ProgramUpdateBanner({
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
-  const program = programFor(plan.programId);
+  const program = programFor(plan);
   const status = useMemo(
     () => planUpdateStatus(plan, program, weightUnit),
     [plan, program, weightUnit],

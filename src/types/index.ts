@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Bumped whenever the persisted shape changes; see src/db/migrations.ts. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 5;
 
 /* ------------------------------------------------------------------ */
 /* Primitives                                                          */
@@ -28,7 +28,7 @@ export const dayTypeSchema = z.enum(['upperA', 'lowerA', 'mobility', 'upperB', '
 export type DayType = z.infer<typeof dayTypeSchema>;
 
 /** Every program the app can instantiate a plan from; see src/data/programs. */
-export const programIdSchema = z.enum(['movement-resilience', 'hypertrophy-14wk']);
+export const programIdSchema = z.enum(['movement-resilience', 'hypertrophy-14wk', 'custom']);
 export type ProgramId = z.infer<typeof programIdSchema>;
 
 /** What a week is for — drives set scaling and the guidance copy. */
@@ -233,6 +233,16 @@ export const workoutPlanSchema = entityBase.extend({
   completedAt: z.string().nullable().default(null),
   programId: programIdSchema.default('movement-resilience'),
   archived: z.boolean().default(false),
+  importedProgram: z
+    .object({
+      shortName: z.string(),
+      description: z.string(),
+      warmUp: z.array(
+        z.object({ id: z.string(), label: z.string(), exerciseId: z.string().optional() }),
+      ),
+      keyLifts: z.array(z.string()),
+    })
+    .optional(),
   /**
    * Fingerprint of `weeks` exactly as the program built them. When the stored weeks
    * still match it, nobody has edited the plan in-app and an updated program can be
@@ -362,6 +372,8 @@ export const userSettingsSchema = entityBase.extend({
   restDefaultSeconds: z.number().int().default(60),
   vibrateOnRestEnd: z.boolean().default(true),
   soundOnRestEnd: z.boolean().default(false),
+  keepScreenOn: z.boolean().default(false),
+  notifyOnRestEnd: z.boolean().default(false),
   bodyweight: z.number().nullable().default(null),
   firstStrictPullUpDate: z.string().nullable().default(null),
   disclaimerAcknowledged: z.boolean().default(false),

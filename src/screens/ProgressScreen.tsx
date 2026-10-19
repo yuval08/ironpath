@@ -134,7 +134,7 @@ export default function ProgressScreen() {
       </ChartCard>
 
       <KeyLiftsCard
-        lifts={programFor(plan.programId).keyLifts ?? []}
+        lifts={programFor(plan).keyLifts ?? []}
         sessions={planSessions}
         unit={settings.weightUnit}
         bandLabels={settings.bandLabels}

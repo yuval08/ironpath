@@ -103,6 +103,8 @@ function toV3(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 export const MIGRATIONS: RecordMigration[] = [
+  // v4 adds optional imported-program metadata; existing rows need no transformation.
+
   {
     to: 2,
     describe:
@@ -113,6 +115,19 @@ export const MIGRATIONS: RecordMigration[] = [
     to: 3,
     describe: 'Plans record a build fingerprint so program updates can be applied safely',
     migrate: toV3,
+  },
+  { to: 4, describe: 'Support imported custom plans', migrate: (row) => row },
+  {
+    to: 5,
+    describe: 'Add opt-in screen wake lock and rest notifications',
+    migrate: (row) =>
+      row.weightUnit === undefined
+        ? row
+        : {
+            ...row,
+            keepScreenOn: row.keepScreenOn ?? false,
+            notifyOnRestEnd: row.notifyOnRestEnd ?? false,
+          },
   },
 ];
 

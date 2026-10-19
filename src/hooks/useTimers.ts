@@ -43,9 +43,16 @@ export interface RestTimer {
 
 export const REST_PRESETS = [45, 60, 75, 90];
 
-/** Countdown rest timer with vibration/sound on completion where supported. */
-export function useRestTimer(options: { vibrate?: boolean; sound?: boolean } = {}): RestTimer {
-  const { vibrate = true, sound = false } = options;
+/** Countdown against a deadline, checking immediately when a suspended page resumes. */
+export function useRestTimer(
+  options: {
+    vibrate?: boolean;
+    sound?: boolean;
+    onComplete?: () => void;
+  } = {},
+): RestTimer {
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [total, setTotal] = useState(60);
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -57,16 +64,17 @@ export function useRestTimer(options: { vibrate?: boolean; sound?: boolean } = {
       setRemaining(null);
       return undefined;
     }
-    notified.current = false;
     const tick = () => {
       const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
       setRemaining(left);
       if (left <= 0 && !notified.current) {
         notified.current = true;
+        const { vibrate = true, sound = false, onComplete } = optionsRef.current;
         if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
           navigator.vibrate([180, 90, 180]);
         }
         if (sound) playBeep();
+        onComplete?.();
         // Held in a ref and cleared below: starting a new rest inside this
         // 900ms window would otherwise be cancelled by the previous one's
         // orphaned dismissal — exactly when the buzz says "go again".
@@ -75,13 +83,22 @@ export function useRestTimer(options: { vibrate?: boolean; sound?: boolean } = {
     };
     tick();
     const id = window.setInterval(tick, 250);
+    document.addEventListener('visibilitychange', tick);
+    window.addEventListener('focus', tick);
+    window.addEventListener('pageshow', tick);
     return () => {
       window.clearInterval(id);
       window.clearTimeout(dismissTimeout.current);
+      document.removeEventListener('visibilitychange', tick);
+      window.removeEventListener('focus', tick);
+      window.removeEventListener('pageshow', tick);
     };
-  }, [endsAt, vibrate, sound]);
+  }, [endsAt]);
 
   const start = useCallback((seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds <= 0) return;
+    notified.current = false;
+    if (optionsRef.current.sound) prepareRestAudio();
     setTotal(seconds);
     setEndsAt(Date.now() + seconds * 1000);
   }, []);
@@ -89,6 +106,8 @@ export function useRestTimer(options: { vibrate?: boolean; sound?: boolean } = {
   const stop = useCallback(() => setEndsAt(null), []);
 
   const add = useCallback((seconds: number) => {
+    if (!Number.isFinite(seconds)) return;
+    notified.current = false;
     setEndsAt((current) => (current == null ? null : current + seconds * 1000));
     setTotal((t) => t + seconds);
   }, []);
@@ -96,13 +115,27 @@ export function useRestTimer(options: { vibrate?: boolean; sound?: boolean } = {
   return { remaining, total, start, stop, add };
 }
 
-function playBeep(): void {
+let restAudio: AudioContext | null = null;
+
+/** Unlock audio during the set/rest button's user gesture, before the countdown expires. */
+function prepareRestAudio(): AudioContext | null {
   try {
     const Ctx =
       window.AudioContext ??
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
+    if (!Ctx) return null;
+    if (!restAudio || restAudio.state === 'closed') restAudio = new Ctx();
+    if (restAudio.state === 'suspended') void restAudio.resume().catch(() => {});
+    return restAudio;
+  } catch {
+    return null;
+  }
+}
+
+function playBeep(): void {
+  try {
+    const ctx = prepareRestAudio();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
@@ -113,7 +146,6 @@ function playBeep(): void {
     osc.connect(gain).connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 0.5);
-    window.setTimeout(() => void ctx.close(), 800);
   } catch {
     /* audio is best-effort only */
   }

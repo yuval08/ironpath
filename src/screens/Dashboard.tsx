@@ -57,7 +57,7 @@ export default function Dashboard() {
 
   if (!plan || !settings) return null;
 
-  const program = programFor(plan.programId);
+  const program = programFor(plan);
   // Once the block is finished there is no "today" — the cursor stays pinned to
   // the last day, which would otherwise offer that day forever.
   const day = plan.completedAt ? undefined : currentDay(plan);
@@ -213,7 +213,13 @@ export default function Dashboard() {
 
       <h3 style={{ margin: '18px 0 8px' }}>Key numbers</h3>
       <div className="grid-2">
-        {isHypertrophy ? (
+        {plan.programId === 'custom' ? (
+          <>
+            <Stat label="Sessions completed" value={done.length} />
+            <Stat label="Weeks in the plan" value={plan.weeks.length} />
+            <Stat label="Bodyweight" value={settings.bodyweight ?? '—'} />
+          </>
+        ) : isHypertrophy ? (
           <>
             <Stat label="Sessions completed" value={done.length} />
             <Stat

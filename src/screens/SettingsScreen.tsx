@@ -4,6 +4,7 @@ import { Download, FileSpreadsheet, HardDrive, Info, Upload, Video } from 'lucid
 import { useAppData } from '@/state/AppDataProvider';
 import { useToast } from '@/state/ToastProvider';
 import { ConfirmButton, Sheet } from '@/components/Sheet';
+import { WorkoutPreferences } from '@/components/WorkoutPreferences';
 import { EXERCISES } from '@/data/exercises';
 import { getVideo } from '@/data/exerciseVideos';
 import { REST_PRESETS } from '@/hooks/useTimers';
@@ -47,10 +48,10 @@ export default function SettingsScreen() {
     Object.keys(settings.weightOverrides).length > 0 ||
     plans.some(
       (savedPlan) =>
+        savedPlan.programId === 'custom' ||
         (savedPlan.builtFingerprint != null &&
           fingerprint(savedPlan.weeks) !== savedPlan.builtFingerprint) ||
-        planUpdateStatus(savedPlan, programFor(savedPlan.programId), settings.weightUnit) ===
-          'edited' ||
+        planUpdateStatus(savedPlan, programFor(savedPlan), settings.weightUnit) === 'edited' ||
         savedPlan.weeks.some((week) =>
           week.days.some((day) =>
             day.prescriptions.some((prescription) => prescription.recommendedWeight != null),
@@ -186,6 +187,7 @@ export default function SettingsScreen() {
             onChange={(e) => void updateSettings({ vibrateOnRestEnd: e.target.checked })}
           />
         </div>
+        <WorkoutPreferences />
         <div className="switch">
           <span>Beep when rest ends</span>
           <input
@@ -253,6 +255,7 @@ export default function SettingsScreen() {
           <input
             ref={jsonInput}
             type="file"
+            aria-label="Import workout backup JSON file"
             accept="application/json,.json"
             hidden
             onChange={(e) => {

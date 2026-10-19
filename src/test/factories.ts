@@ -140,6 +140,8 @@ export function makeSettings(overrides: Partial<UserSettings> = {}): UserSetting
     restDefaultSeconds: 60,
     vibrateOnRestEnd: true,
     soundOnRestEnd: false,
+    keepScreenOn: false,
+    notifyOnRestEnd: false,
     bodyweight: 82,
     firstStrictPullUpDate: '2026-07-20',
     disclaimerAcknowledged: true,

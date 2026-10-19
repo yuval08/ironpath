@@ -68,7 +68,7 @@ export default function FinalAssessmentScreen() {
           <h2>Final assessment</h2>
         </div>
         <p className="muted tiny">
-          Complete this at the end of {programFor(plan.programId).name} — week {plan.weeks.length}.
+          Complete this at the end of {programFor(plan).name} — week {plan.weeks.length}.
           Test when you are fresh, keep every rep clean, and stop any test that provokes pain.
           {!isResilience &&
             ' This program never prescribes a strict pull-up, so leave that row blank unless you' +

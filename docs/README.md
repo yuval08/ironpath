@@ -6,6 +6,7 @@ the YouTube-link policy — these files cover the _why_, the _state_, and the _d
 
 | File                                     | What's in it                                                                               |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [plan-import.md](plan-import.md) | JSON plan generation standard: fields, rest, supersets, progression, phases, and an importable example |
 | [context.md](context.md)                 | Who this is for, the training constraints, and the non-obvious facts that shaped the build |
 | [decisions.md](decisions.md)             | Design decisions and the reasoning behind them — read before changing any of them          |
 | [operations.md](operations.md)           | How it's hosted, installed, updated and reset. Includes the origin/data-loss trap          |

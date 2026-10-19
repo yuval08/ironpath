@@ -5,6 +5,7 @@ import App from './App';
 import { ErrorBoundary } from './components/RecoveryScreen';
 import { AppDataProvider } from './state/AppDataProvider';
 import { ToastProvider } from './state/ToastProvider';
+import { WorkoutAlertsProvider } from './state/WorkoutAlertsProvider';
 import './styles/index.css';
 
 createRoot(document.getElementById('root') as HTMLElement).render(
@@ -13,7 +14,9 @@ createRoot(document.getElementById('root') as HTMLElement).render(
       <HashRouter>
         <ToastProvider>
           <AppDataProvider>
-            <App />
+            <WorkoutAlertsProvider>
+              <App />
+            </WorkoutAlertsProvider>
           </AppDataProvider>
         </ToastProvider>
       </HashRouter>
