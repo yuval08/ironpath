@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ironpath</string>
+    <string name="title_activity_main">Ironpath</string>
+    <string name="package_name">com.ironpath.app</string>
+    <string name="custom_url_scheme">com.ironpath.app</string>
+</resources>

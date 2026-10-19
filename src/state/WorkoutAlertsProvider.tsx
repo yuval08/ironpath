@@ -4,6 +4,12 @@ import { useRestTimer } from '@/hooks/useTimers';
 import type { RestTimer } from '@/hooks/useTimers';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
 import type { ScreenWakeStatus } from '@/hooks/useScreenWakeLock';
+import {
+  nativeRestNotificationsSupported,
+  scheduleNativeRestAlert,
+  cancelNativeRestAlert,
+  listenForNativeRestNotification,
+} from '@/utils/nativeRestNotifications';
 import { closeRestNotifications, showRestNotification } from '@/utils/restNotifications';
 import { useAppData } from './AppDataProvider';
 import { useToast } from './ToastProvider';
@@ -15,6 +21,24 @@ export function WorkoutAlertsProvider({ children }: { children: ReactNode }) {
   const { settings } = useAppData();
   const { toast } = useToast();
   const workoutUrl = useRef('');
+  const deadline = useRef<number | null>(null);
+  useEffect(() => listenForNativeRestNotification(), []);
+  const syncNativeAlert = () => {
+    if (!nativeRestNotificationsSupported()) return;
+    if (!settings?.notifyOnRestEnd || deadline.current == null || deadline.current <= Date.now()) {
+      void cancelNativeRestAlert();
+    } else {
+      void scheduleNativeRestAlert(deadline.current, workoutUrl.current).then((scheduled) => {
+        if (!scheduled)
+          toast('Could not schedule the rest alert. Check notification permissions in Settings.');
+      });
+    }
+  };
+  useEffect(() => {
+    if (settings) syncNativeAlert();
+    // A setting change must cancel/reschedule an existing Android alarm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.notifyOnRestEnd]);
   const wakeStatus = useScreenWakeLock(settings?.keepScreenOn ?? false);
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
@@ -44,6 +68,7 @@ export function WorkoutAlertsProvider({ children }: { children: ReactNode }) {
     onComplete: () => {
       toast('Rest complete — ready for your next set.');
       if (
+        !nativeRestNotificationsSupported() &&
         settings?.notifyOnRestEnd &&
         (document.visibilityState !== 'visible' || !document.hasFocus())
       ) {
@@ -54,11 +79,21 @@ export function WorkoutAlertsProvider({ children }: { children: ReactNode }) {
   const rest: RestTimer = {
     ...timer,
     start: (seconds) => {
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+      deadline.current = Date.now() + seconds * 1000;
       workoutUrl.current = window.location.href;
       void closeRestNotifications();
       timer.start(seconds);
+      syncNativeAlert();
+    },
+    add: (seconds) => {
+      if (!Number.isFinite(seconds) || deadline.current == null) return;
+      deadline.current += seconds * 1000;
+      timer.add(seconds);
+      syncNativeAlert();
     },
     stop: () => {
+      deadline.current = null;
       void closeRestNotifications();
       timer.stop();
     },

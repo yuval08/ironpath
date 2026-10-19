@@ -51,6 +51,38 @@ whether persistence was granted.
 
 ---
 
+## Android APK
+
+The Android app bundles the web build and works offline from its first launch.
+Requires Android 7.0 or newer and an up-to-date Android System WebView.
+
+Build with Node 22+, JDK 21, and Android SDK platform 36 installed:
+
+```bash
+npm ci
+# Set JAVA_HOME to your JDK 21 and ANDROID_HOME to your Android SDK.
+npm run android:apk
+```
+
+The installable, debug-signed APK is written to
+`android/app/build/outputs/apk/debug/app-debug.apk`. Copy it to your phone, open it,
+and allow installation from that file manager/browser when Android asks.
+This build is for direct installation; Play Store distribution needs release signing.
+Keep the same signing key for future updates to preserve the installed app's data.
+
+Excel exports and JSON backups open Android's share sheet so you can save them using
+an installed file app or send them to another app. Imports use the system file picker.
+Browser/PWA data is separate from Android app data: export a JSON backup from the
+existing app, then restore it in Android Settings to transfer your history.
+APK updates require rebuilding and installing a new APK. Browser service-worker
+updates are disabled in the Android build so old cached code cannot override an update.
+Android rest alerts use native local notifications scheduled when rest starts.
+Enable rest notifications in Settings and grant Android's notification permission.
+Use **Allow precise rest alerts** for the Alarms & reminders permission. OS power
+saving and Doze can delay alerts; OS notification settings control sound/vibration.
+
+---
+
 ## The 14-week hypertrophy program
 
 Four training days a week, weekday-mapped, 45–55 minutes per session. Wednesday and the weekend are

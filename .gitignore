@@ -7,3 +7,7 @@ playwright-report
 *.local
 .DS_Store
 *.tsbuildinfo
+
+artifacts/
+*.keystore
+*.jks

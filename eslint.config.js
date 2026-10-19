@@ -6,7 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
-  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results', 'dev-dist', 'public'] },
+  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results', 'dev-dist', 'public', 'android', 'artifacts'] },
   js.configs.recommended,
   {
     files: ['scripts/**/*.mjs', '*.config.js'],

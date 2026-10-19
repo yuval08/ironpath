@@ -54,7 +54,7 @@ export async function downloadBackup(): Promise<string> {
   const data = await buildBackup();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const name = backupFileName();
-  triggerDownload(blob, name);
+  await triggerDownload(blob, name);
   return name;
 }
 

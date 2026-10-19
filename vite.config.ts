@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
   // Stamped into the bundle so Settings can show which build the device is
   // actually running — otherwise there is no way to tell a stale install apart
@@ -17,6 +17,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      disable: mode === 'android',
       registerType: 'prompt',
       injectRegister: null,
       includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
@@ -69,4 +70,4 @@ export default defineConfig({
   preview: {
     allowedHosts: ['fedora.taild6580d.ts.net', 'localhost', '127.0.0.1'],
   },
-});
+}));

@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { exactRestAlarmsAllowed } from '@/utils/nativeRestNotifications';
 import { useEffect, useState } from 'react';
 import { updateSettings } from '@/db/repository';
 import { screenWakeSupported } from '@/hooks/useScreenWakeLock';
@@ -8,6 +10,7 @@ import {
   notificationsSupported,
   requestRestNotificationPermission,
   showRestNotification,
+  restNotificationPermission,
 } from '@/utils/restNotifications';
 
 export function WorkoutPreferences() {
@@ -15,13 +18,27 @@ export function WorkoutPreferences() {
   const { wakeStatus } = useWorkoutAlerts();
   const { toast } = useToast();
   const supported = notificationsSupported();
-  const [permission, setPermission] = useState(() => (supported ? Notification.permission : null));
+  const native = Capacitor.isNativePlatform();
+  const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [exactAlarms, setExactAlarms] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    const refresh = () => setPermission(notificationsSupported() ? Notification.permission : null);
+    let disposed = false;
+    const refresh = () => {
+      void restNotificationPermission()
+        .then((value) => {
+          if (!disposed) setPermission(value);
+        })
+        .catch(() => {});
+      void exactRestAlarmsAllowed().then((value) => {
+        if (!disposed) setExactAlarms(value);
+      });
+    };
+    refresh();
     document.addEventListener('visibilitychange', refresh);
     window.addEventListener('focus', refresh);
     return () => {
+      disposed = true;
       document.removeEventListener('visibilitychange', refresh);
       window.removeEventListener('focus', refresh);
     };
@@ -34,6 +51,7 @@ export function WorkoutPreferences() {
       if (enabled) {
         const granted = await requestRestNotificationPermission();
         setPermission(granted);
+        setExactAlarms(await exactRestAlarmsAllowed());
         if (granted !== 'granted') {
           toast('Allow notifications in your browser or app settings to enable rest alerts.');
           return;
@@ -84,13 +102,33 @@ export function WorkoutPreferences() {
       </div>
       <p className="muted tiny">
         {!supported
-          ? 'Notifications are unavailable here. Try installing the app from an HTTPS address.'
+          ? native
+            ? 'Rest notifications are unavailable in this APK. Install the latest Ironpath APK.'
+            : 'Notifications are unavailable here. Try installing the app from an HTTPS address.'
           : permission === 'denied'
             ? 'Notifications are blocked. Allow them in your browser or app settings.'
             : settings.notifyOnRestEnd && permission !== 'granted'
               ? 'Notification permission is needed. Turn this off and on to allow alerts.'
-              : 'Allow notifications when prompted. Background alerts may be delayed if your phone suspends the app. Keep Ironpath open for the most reliable timing.'}
+              : native
+                ? 'Android schedules rest alerts when a timer starts, including while Ironpath is in the background. Phone power-saving settings may delay alerts.'
+                : 'Allow notifications when prompted. Background alerts may be delayed if your phone suspends the app. Keep Ironpath open for the most reliable timing.'}
       </p>
+      {native && permission === 'granted' && exactAlarms === false && (
+        <>
+          <p className="muted tiny">
+            Allow Alarms &amp; reminders for precise rest timing. Otherwise Android may delay
+            alerts.
+          </p>
+          <button
+            className="btn small"
+            onClick={() => {
+              void exactRestAlarmsAllowed(true).then(setExactAlarms);
+            }}
+          >
+            Allow precise rest alerts
+          </button>
+        </>
+      )}
       {supported && permission === 'granted' && (
         <button
           className="btn small"
@@ -98,6 +136,7 @@ export function WorkoutPreferences() {
             void showRestNotification(
               new URL(`${import.meta.env.BASE_URL}#/workout`, location.href).href,
             ).then((sent) => {
+              if (sent && native) toast('Test notification scheduled in 3 seconds.');
               if (!sent)
                 toast('Notifications are not ready. Reload the installed app and try again.');
             })

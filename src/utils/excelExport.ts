@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import type ExcelJS from 'exceljs';
 import { loadExcelJS } from './excelModule';
 import { format } from 'date-fns';
@@ -951,11 +952,32 @@ export async function exportWorkbookBlob(input: ExportInput): Promise<Blob> {
 export async function downloadExcel(input: ExportInput): Promise<string> {
   const blob = await exportWorkbookBlob(input);
   const name = exportFileName();
-  triggerDownload(blob, name);
+  await triggerDownload(blob, name);
   return name;
 }
 
-export function triggerDownload(blob: Blob, filename: string): void {
+export async function triggerDownload(blob: Blob, filename: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+      import('@capacitor/filesystem'),
+      import('@capacitor/share'),
+    ]);
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error ?? new Error('Could not read export'));
+      reader.onload = () => resolve(String(reader.result).split(',')[1]!);
+      reader.readAsDataURL(blob);
+    });
+    const { uri } = await Filesystem.writeFile({
+      path: `exports/${Date.now()}-${filename}`,
+      data,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+    // Keep the cached file available while the receiving app reads it.
+    await Share.share({ title: filename, files: [uri], dialogTitle: 'Save or share export' });
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

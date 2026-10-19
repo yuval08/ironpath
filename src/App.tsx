@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { BarChart3, CalendarDays, Dumbbell, Home, MoreHorizontal } from 'lucide-react';
 import { useAppData } from './state/AppDataProvider';
@@ -73,7 +74,7 @@ export default function App() {
         )}
       </main>
 
-      <UpdatePrompt />
+      {!Capacitor.isNativePlatform() && <UpdatePrompt />}
 
       <nav className="bottom-nav" aria-label="Primary">
         <NavLink to="/" end>

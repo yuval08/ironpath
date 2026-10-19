@@ -1,21 +1,38 @@
+import { Capacitor } from '@capacitor/core';
+import {
+  nativeRestNotificationsSupported,
+  nativeRestPermission,
+  scheduleNativeRestTestAlert,
+  cancelNativeRestAlert,
+} from './nativeRestNotifications';
+
 const REST_TAG = 'ironpath-rest-finished';
 let generation = 0;
 
 export function notificationsSupported(): boolean {
   return (
-    typeof Notification !== 'undefined' &&
-    typeof navigator !== 'undefined' &&
-    'serviceWorker' in navigator
+    nativeRestNotificationsSupported() ||
+    (!Capacitor.isNativePlatform() &&
+      typeof Notification !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      'serviceWorker' in navigator)
   );
+}
+
+export async function restNotificationPermission(): Promise<NotificationPermission | null> {
+  if (nativeRestNotificationsSupported()) return nativeRestPermission();
+  return notificationsSupported() ? Notification.permission : null;
 }
 
 /** Call directly from a user gesture; permission is never requested by a timer. */
 export async function requestRestNotificationPermission(): Promise<NotificationPermission> {
+  if (nativeRestNotificationsSupported()) return nativeRestPermission(true);
   if (!notificationsSupported()) return 'denied';
   return Notification.requestPermission();
 }
 
 export async function showRestNotification(url: string): Promise<boolean> {
+  if (nativeRestNotificationsSupported()) return scheduleNativeRestTestAlert(url);
   if (!notificationsSupported() || Notification.permission !== 'granted') return false;
   try {
     const current = generation;
@@ -35,6 +52,10 @@ export async function showRestNotification(url: string): Promise<boolean> {
 
 export async function closeRestNotifications(): Promise<void> {
   generation += 1;
+  if (nativeRestNotificationsSupported()) {
+    await cancelNativeRestAlert();
+    return;
+  }
   if (!notificationsSupported() || Notification.permission !== 'granted') return;
   try {
     const registration = await navigator.serviceWorker.getRegistration();

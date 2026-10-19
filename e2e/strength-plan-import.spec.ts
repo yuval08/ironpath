@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { resolve } from 'node:path';
+import { version } from '../package.json';
 
-test('1.0.1 imports the unchanged strength foundation file and persists it', async ({ page }) => {
+test('imports the unchanged strength foundation file and persists it', async ({ page }) => {
   await page.goto('/#/settings');
   await page.getByRole('button', { name: 'Got it' }).click();
-  await expect(page.getByText(/^1\.0\.1 ·/)).toBeVisible();
+  await expect(page.getByText(`${version} ·`, { exact: false })).toBeVisible();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import plan from JSON' }).click();
   await (await chooser).setFiles(resolve('src/test/fixtures/phase3-strength-foundation.json'));
