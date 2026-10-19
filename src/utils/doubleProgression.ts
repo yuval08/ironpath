@@ -56,7 +56,7 @@ export interface PerformanceSnapshot {
 }
 
 export function snapshotFor(session: WorkoutSession, result: ExerciseResult): PerformanceSnapshot {
-  const sets = workingSets(result);
+  const sets = workingSets(result).filter((set) => set.completed);
   const weights = sets.map((s) => s.weight).filter((w): w is number => typeof w === 'number');
   const bands = sets.map((s) => s.band).filter((b): b is BandResistance => b != null);
   return {
@@ -71,7 +71,10 @@ export function snapshotFor(session: WorkoutSession, result: ExerciseResult): Pe
 
 function resultsFor(session: WorkoutSession, exerciseId: string): ExerciseResult[] {
   return session.results.filter(
-    (r) => r.skippedReason == null && performedExerciseId(r) === exerciseId,
+    (r) =>
+      r.skippedReason == null &&
+      performedExerciseId(r) === exerciseId &&
+      workingSets(r).some((set) => set.completed),
   );
 }
 
@@ -103,6 +106,48 @@ export function previousResult(
   return loggedResults(sessions, exerciseId).at(-1)?.result ?? null;
 }
 
+const HINT_FIELDS = ['weight', 'reps', 'repsLeft', 'repsRight'] as const;
+
+/**
+ * Display-only hints, with holes in older saved sessions filled from earlier
+ * completed sets. Keep this separate from actual performance: inferred values
+ * must never enter charts or progression decisions.
+ */
+export function previousHints(
+  sessions: WorkoutSession[],
+  exerciseId: string,
+): ExerciseResult | null {
+  const history = loggedResults(sessions, exerciseId)
+    .map(({ result }) => result)
+    .reverse();
+  const latest = history[0];
+  if (!latest) return null;
+  let rampIndex = 0;
+  let workingIndex = 0;
+  return {
+    ...latest,
+    sets: latest.sets.map((set) => {
+      const ramp = !!set.isWarmUp;
+      const index = ramp ? rampIndex++ : workingIndex++;
+      const hint = { ...set };
+      for (const field of HINT_FIELDS) {
+        // Only completed rows supply hints, including the newest session.
+        hint[field] = null;
+        for (const result of history) {
+          const group = ramp ? rampSetsOf(result) : workingSets(result);
+          const source =
+            index < group.length ? group[index] : group.filter((row) => row.completed).at(-1);
+          if (source?.completed && source[field] != null) {
+            hint[field] = source[field];
+            break;
+          }
+        }
+      }
+      return hint;
+    }),
+  };
+}
+
 /**
  * The placeholder for a set row: the same set last time, or the last set logged
  * when this session has more sets than that one did (reload week 1 ran two).
@@ -114,7 +159,7 @@ export function setHint(
 ): SetResult | null {
   if (!previous) return null;
   const sets = ramp ? rampSetsOf(previous) : workingSets(previous);
-  return sets[index] ?? sets.at(-1) ?? null;
+  return sets[index] ?? sets.filter((set) => set.completed).at(-1) ?? null;
 }
 
 /** Every logged performance of an exercise, oldest first. */

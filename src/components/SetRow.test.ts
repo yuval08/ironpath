@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeSet } from '@/test/factories';
-import { applyField, canBeLoaded, fieldsFor } from './SetRow';
+import { acceptSetHints, applyField, canBeLoaded, fieldsFor } from './SetRow';
 
 describe('set fields by load type', () => {
   it('offers no weight box for a push-up', () => {
@@ -100,5 +100,49 @@ describe('applyField', () => {
   it('never overwrites a right side the user set on its own', () => {
     const own = applyField(applyField(blank, 'repsLeft', 10), 'repsRight', 8);
     expect(applyField(own, 'repsLeft', 12)).toMatchObject({ repsLeft: 12, repsRight: 8 });
+  });
+});
+
+describe('accepting visible hints', () => {
+  const hint = makeSet({ weight: 40, reps: 10, repsLeft: 12, repsRight: 9, rir: 2, rpe: 8 });
+
+  it('accepts blank weight and reps without copying effort or mutating either input', () => {
+    const set = makeSet({ completed: false });
+    expect(acceptSetHints(set, hint, 'reps', 'dumbbell', 'rir')).toMatchObject({
+      weight: 40,
+      reps: 10,
+      rir: null,
+      rpe: null,
+      repsLeft: null,
+      completed: false,
+    });
+    expect(set.weight).toBeNull();
+    expect(hint.weight).toBe(40);
+  });
+
+  it('preserves explicit values including zero and asymmetric reps', () => {
+    const set = makeSet({ weight: 0, repsLeft: 8, repsRight: null });
+    expect(acceptSetHints(set, hint, 'repsPerSide', 'dumbbell')).toMatchObject({
+      weight: 0,
+      reps: null,
+      repsLeft: 8,
+      repsRight: 9,
+    });
+  });
+
+  it('does not save hidden weights for bodyweight exercises', () => {
+    expect(acceptSetHints(makeSet(), hint, 'reps', 'bodyweight')).toMatchObject({
+      weight: null,
+      reps: 10,
+    });
+  });
+
+  it('does not invent missing hints or copy unhinted duration fields', () => {
+    expect(acceptSetHints(makeSet(), null, 'reps', 'machine').weight).toBeNull();
+    const timed = makeSet({ durationSeconds: 30, weight: 20 });
+    expect(acceptSetHints(makeSet(), timed, 'time', 'kettlebell')).toMatchObject({
+      weight: 20,
+      durationSeconds: null,
+    });
   });
 });

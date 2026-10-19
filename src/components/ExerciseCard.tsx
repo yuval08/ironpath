@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { exerciseName, getExercise } from '@/data/exercises';
 import { painLevel } from '@/utils/stats';
-import { SetRow } from './SetRow';
+import { acceptSetHints, SetRow } from './SetRow';
 import type { EffortField } from './SetRow';
 import { ExerciseOptionsSheet, hasExerciseOptions } from './ExerciseOptionsSheet';
 import { HistoryLine } from './HistoryLine';
@@ -107,11 +107,27 @@ export function ExerciseCard({
     onChange(withSets(result.sets.map((s, i) => (i === index ? next : s))));
   };
 
+  const completeSet = (set: SetResult): SetResult => {
+    if (set.completed) return set;
+    const group = set.isWarmUp ? ramp : working;
+    const hint = setHint(previous, group.indexOf(set), set.isWarmUp);
+    return {
+      ...acceptSetHints(set, hint, prescription.entryStyle, def?.loadType ?? 'bodyweight', effort),
+      completed: true,
+    };
+  };
+
   const toggleSet = (index: number) => {
     const current = result.sets[index];
     if (!current) return;
     const completed = !current.completed;
-    onChange(withSets(result.sets.map((s, i) => (i === index ? { ...s, completed } : s))));
+    onChange(
+      withSets(
+        result.sets.map((s, i) =>
+          i === index ? (completed ? completeSet(s) : { ...s, completed: false }) : s,
+        ),
+      ),
+    );
     // A ramp set is a plate change, not a working effort — no rest, and no cue
     // to move on to the next superset slot.
     if (current.isWarmUp) return;
@@ -129,7 +145,7 @@ export function ExerciseCard({
 
   const markComplete = () => {
     // Only the working sets — a skipped ramp set must not read as "done".
-    onChange(withSets(result.sets.map((s) => (s.isWarmUp ? s : { ...s, completed: true }))));
+    onChange(withSets(result.sets.map((s) => (s.isWarmUp ? s : completeSet(s)))));
   };
 
   /** Prefills THIS session's open sets. Never touches the session it was derived from. */
@@ -198,6 +214,12 @@ export function ExerciseCard({
             weightUnit={weightUnit}
             bandLabels={bandLabels}
           />
+
+          {previous && (
+            <p className="muted tiny">
+              Empty weight and rep fields use the shown hints when you complete a set.
+            </p>
+          )}
 
           {verdict && (
             <ProgressionBanner

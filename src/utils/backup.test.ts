@@ -83,6 +83,45 @@ describe('backup', () => {
     await expect(restoreBackup({ nope: true })).rejects.toThrow();
     expect(await db.sessions.get('keep-me')).toBeDefined();
   });
+
+  it('rejects settings that cannot be read by the app without erasing local data', async () => {
+    await db.plans.put(makePlan());
+    await db.settings.put(makeSettings());
+    await db.sessions.put(makeSession({ id: 'keep-me' }));
+    const backup = await buildBackup();
+    backup.settings = [makeSettings({ id: 'wrong-settings-key' })];
+    backup.sessions = [];
+
+    await expect(restoreBackup(backup)).rejects.toThrow(/invalid settings/i);
+    expect(await db.settings.get('settings')).toBeDefined();
+    expect(await db.sessions.get('keep-me')).toBeDefined();
+  });
+
+  it('rejects duplicate IDs instead of silently dropping workout history', async () => {
+    await db.plans.put(makePlan());
+    await db.settings.put(makeSettings());
+    await db.sessions.put(makeSession({ id: 'keep-me' }));
+    const backup = await buildBackup();
+    backup.sessions = [
+      makeSession({ id: 'duplicate', results: [makeResult('standard-push-up', [{ reps: 15 }])] }),
+      makeSession({ id: 'duplicate', results: [makeResult('standard-push-up', [{ reps: 20 }])] }),
+    ];
+
+    await expect(restoreBackup(backup)).rejects.toThrow(/duplicate sessions IDs/i);
+    expect(await db.sessions.get('keep-me')).toBeDefined();
+    expect(await db.sessions.get('duplicate')).toBeUndefined();
+  });
+
+  it('rejects a future-version row even when the file version is supported', async () => {
+    await db.plans.put(makePlan());
+    await db.settings.put(makeSettings());
+    await db.sessions.put(makeSession({ id: 'keep-me' }));
+    const backup = await buildBackup();
+    backup.sessions = [makeSession({ id: 'future', schemaVersion: 99 })];
+
+    await expect(restoreBackup(backup)).rejects.toThrow(/newer version of the app/i);
+    expect(await db.sessions.get('keep-me')).toBeDefined();
+  });
 });
 
 describe('empty backup guard (regression)', () => {

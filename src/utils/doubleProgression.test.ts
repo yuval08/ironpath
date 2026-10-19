@@ -11,6 +11,7 @@ import {
   nextLighterBand,
   performanceHistory,
   previousResult,
+  previousHints,
   progressionReps,
   rampSetsOf,
   recentPerformances,
@@ -491,5 +492,88 @@ describe('set placeholders and recent history', () => {
       '2026-08-03',
       '2026-08-02',
     ]);
+  });
+});
+
+describe('performed history and resilient hints', () => {
+  const exerciseId = 'incline-dumbbell-press';
+  const historical = (date: string, sets: Parameters<typeof makeResult>[1]) =>
+    makeSession({ date, results: [makeResult(exerciseId, sets)] });
+
+  it('ignores untouched prescribed defaults and ramp-only work', () => {
+    const old = historical('2026-08-01', [{ weight: 32, reps: 10 }]);
+    const untouched = historical('2026-08-08', [
+      { weight: 40, reps: 12, completed: false },
+      { weight: 40, completed: false },
+    ]);
+    const rampOnly = historical('2026-08-15', [
+      { weight: 20, reps: 5, isWarmUp: true },
+      { weight: 40, completed: false },
+    ]);
+    const sessions = [old, untouched, rampOnly];
+    expect(previousResult(sessions, exerciseId)).toBe(old.results[0]);
+    expect(performanceHistory(sessions, exerciseId)).toHaveLength(1);
+    expect(previousHints(sessions, exerciseId)?.sets[0]?.weight).toBe(32);
+  });
+
+  it('fills fields independently across several weeks without changing saved performance', () => {
+    const old = historical('2026-08-01', [
+      { weight: 35, reps: 10 },
+      { weight: 40, reps: 9 },
+      { weight: 40, reps: 8 },
+    ]);
+    const middle = historical('2026-08-08', [
+      { weight: 37, reps: 11 },
+      { weight: null, reps: 10 },
+      { weight: null, reps: null },
+    ]);
+    const latest = historical('2026-08-15', [
+      { weight: null, reps: 12 },
+      { weight: null, reps: null },
+      { weight: 0, reps: 0 },
+    ]);
+    const sessions = [latest, old, middle];
+    const hints = previousHints(sessions, exerciseId);
+    expect(hints?.sets.map(({ weight, reps }) => ({ weight, reps }))).toEqual([
+      { weight: 37, reps: 12 },
+      { weight: 40, reps: 10 },
+      { weight: 0, reps: 0 },
+    ]);
+    expect(previousResult(sessions, exerciseId)?.sets[1]?.weight).toBeNull();
+    expect(lastPerformance(sessions, exerciseId)?.weight).toBe(0);
+    expect(latest.results[0]?.sets[0]?.weight).toBeNull();
+  });
+
+  it('keeps ramp and working ordinals separate and extends shorter historical groups', () => {
+    const old = historical('2026-08-01', [
+      { weight: 15, reps: 5, isWarmUp: true },
+      { weight: 30, repsLeft: 12, repsRight: 10 },
+    ]);
+    const latest = historical('2026-08-08', [
+      { weight: null, reps: null, isWarmUp: true },
+      { weight: null, repsLeft: null, repsRight: null },
+      { weight: null, repsLeft: null, repsRight: null },
+    ]);
+    const hints = previousHints([old, latest], exerciseId);
+    expect(setHint(hints, 0, true)).toMatchObject({ weight: 15, reps: 5 });
+    expect(setHint(hints, 0)).toMatchObject({ weight: 30, repsLeft: 12, repsRight: 10 });
+    expect(setHint(hints, 1)).toMatchObject({ weight: 30, repsLeft: 12, repsRight: 10 });
+    expect(setHint(hints, 2)).toMatchObject({ weight: 30, repsLeft: 12, repsRight: 10 });
+  });
+
+  it('never uses uncompleted entries as hints or chart performance', () => {
+    const old = historical('2026-08-01', [
+      { weight: 30, reps: 10 },
+      { weight: 30, reps: 9 },
+    ]);
+    const latest = historical('2026-08-08', [
+      { weight: 32, reps: 10 },
+      { weight: 90, reps: 90, completed: false },
+    ]);
+    const sessions = [old, latest];
+    expect(setHint(previousHints(sessions, exerciseId), 1)).toMatchObject({ weight: 30, reps: 9 });
+    expect(lastPerformance(sessions, exerciseId)).toMatchObject({ weight: 32, reps: [10] });
+    expect(lastPerformance(sessions, exerciseId)?.sets).toHaveLength(1);
+    expect(setHint(previousHints([latest], exerciseId), 2)).toMatchObject({ weight: 32, reps: 10 });
   });
 });

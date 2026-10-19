@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { db } from '@/db/db';
+import { db, SETTINGS_ID } from '@/db/db';
 import { isFutureSchema, migrateAll } from '@/db/migrations';
 import { SCHEMA_VERSION, backupFileSchema } from '@/types';
 import type { BackupFile, UserSettings, WorkoutPlan } from '@/types';
@@ -7,15 +7,28 @@ import { triggerDownload } from './excelExport';
 
 export async function buildBackup(): Promise<BackupFile> {
   const [plans, sessions, personalRecords, settings, suggestions, assessments, importedWeights] =
-    await Promise.all([
-      db.plans.toArray(),
-      db.sessions.toArray(),
-      db.personalRecords.toArray(),
-      db.settings.toArray(),
-      db.suggestions.toArray(),
-      db.assessments.toArray(),
-      db.importedWeights.toArray(),
-    ]);
+    await db.transaction(
+      'r',
+      [
+        db.plans,
+        db.sessions,
+        db.personalRecords,
+        db.settings,
+        db.suggestions,
+        db.assessments,
+        db.importedWeights,
+      ],
+      () =>
+        Promise.all([
+          db.plans.toArray(),
+          db.sessions.toArray(),
+          db.personalRecords.toArray(),
+          db.settings.toArray(),
+          db.suggestions.toArray(),
+          db.assessments.toArray(),
+          db.importedWeights.toArray(),
+        ]),
+    );
 
   return {
     // The app is Ironpath now. `backupFileSchema` still accepts the old literal,
@@ -86,6 +99,30 @@ export async function restoreBackup(json: unknown): Promise<RestoreResult> {
   // loading screen until a reload.
   if (data.plans.length === 0 || data.settings.length === 0) {
     throw new Error('That backup contains no plan or settings — nothing was changed.');
+  }
+  // Schemas validate individual rows; these checks enforce the database's keys
+  // before replacing anything. bulkPut otherwise silently overwrites duplicates.
+  if (data.settings.length !== 1 || data.settings[0]!.id !== SETTINGS_ID) {
+    throw new Error('That backup has invalid settings — nothing was changed.');
+  }
+  for (const name of [
+    'plans',
+    'sessions',
+    'personalRecords',
+    'settings',
+    'suggestions',
+    'assessments',
+    'importedWeights',
+  ] as const) {
+    const rows = data[name];
+    if (new Set(rows.map((row) => row.id)).size !== rows.length) {
+      throw new Error(`That backup has duplicate ${name} IDs — nothing was changed.`);
+    }
+    if (rows.some((row) => isFutureSchema(row.schemaVersion))) {
+      throw new Error(
+        'This backup contains records from a newer version of the app. Update the app first.',
+      );
+    }
   }
 
   await db.transaction(

@@ -269,9 +269,41 @@ export async function getSettings(): Promise<UserSettings | undefined> {
 }
 
 export async function updateSettings(patch: Partial<UserSettings>): Promise<void> {
-  const current = await getSettings();
-  if (!current) return;
-  await db.settings.put({ ...current, ...patch, updatedAt: nowIso() });
+  await db.transaction('rw', db.settings, db.sessions, db.plans, async () => {
+    const current = await getSettings();
+    if (!current) return;
+    if (
+      patch.weightUnit &&
+      patch.weightUnit !== current.weightUnit &&
+      ((await db.sessions.count()) > 0 ||
+        current.bodyweight != null ||
+        Object.keys(current.weightOverrides).length > 0 ||
+        (await getPlans()).some(
+          (plan) =>
+            planUpdateStatus(plan, programFor(plan.programId), current.weightUnit) === 'edited' ||
+            (plan.builtFingerprint != null && fingerprint(plan.weeks) !== plan.builtFingerprint) ||
+            plan.weeks.some((week) =>
+              week.days.some((day) =>
+                day.prescriptions.some((prescription) => prescription.recommendedWeight != null),
+              ),
+            ),
+        ))
+    ) {
+      throw new Error('Weight units cannot change while recorded weights or workouts exist.');
+    }
+    if (patch.weightUnit && patch.weightUnit !== current.weightUnit) {
+      for (const plan of await getPlans()) {
+        const program = programFor(plan.programId);
+        if (!program.syncStoredPlans) continue;
+        await db.plans.put({
+          ...plan,
+          ...rebuiltPlanPatch(plan, program, patch.weightUnit),
+          updatedAt: nowIso(),
+        });
+      }
+    }
+    await db.settings.put({ ...current, ...patch, updatedAt: nowIso() });
+  });
 }
 
 /** Patches the ACTIVE plan. Use archivePlan/deletePlan for a specific one. */
@@ -523,7 +555,13 @@ export async function createSession(
 }
 
 export async function saveSession(session: WorkoutSession): Promise<void> {
-  await db.sessions.put({ ...session, updatedAt: nowIso() });
+  await db.transaction('rw', db.sessions, async () => {
+    const stored = await db.sessions.get(session.id);
+    // A stale installed-app/browser tab must not reopen or abandon a workout
+    // another tab already completed, nor resurrect one that was deleted.
+    if (!stored || (stored.status !== 'inProgress' && session.status !== stored.status)) return;
+    await db.sessions.put({ ...session, updatedAt: nowIso() });
+  });
 }
 
 export async function getSession(id: string): Promise<WorkoutSession | undefined> {
@@ -568,28 +606,35 @@ export async function findSessionForDay(
  *    of any week can be started from the Plan screen; completing an out-of-order
  *    day must not shift the cursor off a day that was never trained.
  */
-export async function completeSession(session: WorkoutSession): Promise<void> {
-  const stored = await db.sessions.get(session.id);
-  if (stored?.status === 'completed') return;
+export async function completeSession(session: WorkoutSession): Promise<WorkoutSession> {
+  // The row guard and cursor advance must commit together, including across tabs.
+  // Otherwise a failed plan write leaves an irretryable completed session, or a
+  // second finisher can pass the guard before the first one saves.
+  return db.transaction('rw', db.sessions, db.plans, async () => {
+    const stored = await db.sessions.get(session.id);
+    if (stored?.status === 'completed') return migrateAll([stored])[0]!;
+    if (!stored || stored.status !== 'inProgress') {
+      throw new Error('This workout was removed or abandoned.');
+    }
 
-  await saveSession({ ...session, status: 'completed', completedAt: nowIso() });
+    const completed: WorkoutSession = { ...session, status: 'completed', completedAt: nowIso() };
+    await saveSession(completed);
 
-  const plan = await getPlan();
-  if (!plan) return;
-  if (currentDay(plan)?.id !== session.dayId) return;
+    // Switching programs must not redirect an unfinished workout's cursor update.
+    const plan = await getPlanById(session.planId);
+    if (!plan || currentDay(plan)?.id !== session.dayId) return completed;
 
-  const week = plan.weeks.find((w) => w.weekNumber === plan.currentWeek);
-  if (!week) return;
-  const lastDay = plan.currentDayIndex >= week.days.length - 1;
-  if (!lastDay) {
-    await updatePlan({ currentDayIndex: plan.currentDayIndex + 1 });
-    return;
-  }
-  if (plan.currentWeek >= plan.weeks.length) {
-    await updatePlan({ currentDayIndex: week.days.length - 1, completedAt: nowIso() });
-    return;
-  }
-  await updatePlan({ currentWeek: plan.currentWeek + 1, currentDayIndex: 0 });
+    const week = plan.weeks.find((w) => w.weekNumber === plan.currentWeek);
+    if (!week) return completed;
+    const lastDay = plan.currentDayIndex >= week.days.length - 1;
+    const patch = !lastDay
+      ? { currentDayIndex: plan.currentDayIndex + 1 }
+      : plan.currentWeek >= plan.weeks.length
+        ? { currentDayIndex: week.days.length - 1, completedAt: nowIso() }
+        : { currentWeek: plan.currentWeek + 1, currentDayIndex: 0 };
+    await db.plans.put({ ...plan, ...patch, updatedAt: nowIso() });
+    return completed;
+  });
 }
 
 export async function abandonSession(sessionId: string): Promise<void> {

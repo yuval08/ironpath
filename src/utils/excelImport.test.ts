@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { bestExerciseMatch, parseLegacyTracker, scoreMatch, tokenize } from './excelImport';
+import {
+  bestExerciseMatch,
+  parseLegacyTracker,
+  parseWorkbookRows,
+  scoreMatch,
+  tokenize,
+} from './excelImport';
 
 const LEGACY_FILE = resolve(__dirname, '../../workout_tracker_12wk.xlsx');
 
@@ -70,6 +76,23 @@ describe('parseLegacyTracker (real 12-week tracker)', () => {
 });
 
 describe('set-column alignment (regression)', () => {
+  it('matches reps by set number when a reps column is missing or reordered', async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet('Partial columns');
+    sheet.addRow(['Exercise', 'S1 Wt', 'S2 Wt', 'S2 Reps']);
+    sheet.addRow(['Hip Thrust', 60, 50, 12]);
+    sheet.addRow(['Goblet Squat', 20, 30, 10]);
+    sheet.addRow(['Exercise', 'S1 Wt', 'S2 Wt', 'S2 Reps', 'S1 Reps']);
+    sheet.addRow(['Farmer Carry', 40, 30, 15, 8]);
+
+    expect(parseWorkbookRows(wb).map((row) => [row.bestWeight, row.bestReps])).toEqual([
+      [60, null],
+      [30, 10],
+      [40, 8],
+    ]);
+  });
+
   /**
    * A blank or zero weight to the left of the best set used to shift the reps
    * lookup, reporting a different set's rep count on the import confirm screen.

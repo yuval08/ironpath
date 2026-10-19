@@ -7,6 +7,8 @@ import { ConfirmButton, Sheet } from '@/components/Sheet';
 import { EXERCISES } from '@/data/exercises';
 import { getVideo } from '@/data/exerciseVideos';
 import { REST_PRESETS } from '@/hooks/useTimers';
+import { programFor } from '@/data/programs';
+import { planUpdateStatus } from '@/data/programs/planSync';
 import { PlanSwitcher } from './PlanSwitcher';
 import { BandLabelEditor } from './BandLabelEditor';
 import {
@@ -21,6 +23,7 @@ import {
 import { downloadBackup, readJsonFile, restoreBackup } from '@/utils/backup';
 import { downloadExcel } from '@/utils/excelExport';
 import { storageEstimate } from '@/db/db';
+import { fingerprint } from '@/utils/fingerprint';
 import type { ThemeMode, VideoReference, WeightUnit } from '@/types';
 
 export default function SettingsScreen() {
@@ -37,6 +40,34 @@ export default function SettingsScreen() {
   }, [sessions]);
 
   if (!plan || !settings) return null;
+
+  const weightUnitLocked =
+    sessions.length > 0 ||
+    settings.bodyweight != null ||
+    Object.keys(settings.weightOverrides).length > 0 ||
+    plans.some(
+      (savedPlan) =>
+        (savedPlan.builtFingerprint != null &&
+          fingerprint(savedPlan.weeks) !== savedPlan.builtFingerprint) ||
+        planUpdateStatus(savedPlan, programFor(savedPlan.programId), settings.weightUnit) ===
+          'edited' ||
+        savedPlan.weeks.some((week) =>
+          week.days.some((day) =>
+            day.prescriptions.some((prescription) => prescription.recommendedWeight != null),
+          ),
+        ),
+    );
+
+  const changeWeightUnit = async (weightUnit: WeightUnit) => {
+    setBusy(true);
+    try {
+      await updateSettings({ weightUnit });
+    } catch (error) {
+      toast((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const exportExcel = async () => {
     setBusy(true);
@@ -85,11 +116,18 @@ export default function SettingsScreen() {
             Weight unit
             <select
               value={settings.weightUnit}
-              onChange={(e) => void updateSettings({ weightUnit: e.target.value as WeightUnit })}
+              disabled={weightUnitLocked || busy}
+              aria-describedby={weightUnitLocked ? 'weight-unit-locked' : undefined}
+              onChange={(e) => void changeWeightUnit(e.target.value as WeightUnit)}
             >
               <option value="kg">kg</option>
               <option value="lb">lb</option>
             </select>
+            {weightUnitLocked && (
+              <span className="muted" id="weight-unit-locked">
+                Weight unit is locked while saved workouts, weights, or customized plans use it.
+              </span>
+            )}
           </label>
           <label className="field">
             Bodyweight

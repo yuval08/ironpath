@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { WorkoutSession } from '../src/types';
 
 /**
  * End-to-end coverage for Ironpath.
@@ -288,6 +289,108 @@ test.describe('Ironpath — hypertrophy block', () => {
 });
 
 test.describe('revised plan', () => {
+  test('recovers partial multi-week hints and persists accepted values after reload', async ({
+    page,
+  }) => {
+    await freshApp(page);
+    await beginSession(page);
+    const current = (await readRows<WorkoutSession>(page, 'sessions'))[0]!;
+    const exerciseId = 'incline-dumbbell-press';
+    const template = current.results.find((result) => result.exerciseId === exerciseId)!;
+    const old = (
+      id: string,
+      date: string,
+      weights: (number | null)[],
+      reps: (number | null)[],
+      completed: boolean,
+    ): WorkoutSession => ({
+      ...current,
+      id,
+      date,
+      startedAt: `${date}T08:00:00.000Z`,
+      completedAt: `${date}T09:00:00.000Z`,
+      status: 'completed',
+      results: [
+        {
+          ...template,
+          completed,
+          sets: template.sets.map((set) => {
+            const ordinal = template.sets.filter((row) => !row.isWarmUp).indexOf(set);
+            return {
+              ...set,
+              completed: !set.isWarmUp && completed,
+              weight: ordinal >= 0 ? (weights[ordinal] ?? null) : null,
+              reps: ordinal >= 0 ? (reps[ordinal] ?? null) : null,
+            };
+          }),
+        },
+      ],
+    });
+    const history = [
+      old('history-original', '2000-01-01', [35, 40], [10, 9], true),
+      old('history-partial', '2000-01-08', [36, null], [11, null], true),
+      old('history-untouched', '2000-01-15', [80, 80], [null, null], false),
+    ];
+    await page.evaluate(
+      async ({ dbName, rows }) => {
+        await new Promise<void>((done, fail) => {
+          const request = indexedDB.open(dbName);
+          request.onerror = () => fail(request.error);
+          request.onsuccess = () => {
+            const connection = request.result;
+            const transaction = connection.transaction('sessions', 'readwrite');
+            for (const row of rows) transaction.objectStore('sessions').put(row);
+            transaction.oncomplete = () => {
+              connection.close();
+              done();
+            };
+            transaction.onerror = () => {
+              connection.close();
+              fail(transaction.error);
+            };
+          };
+        });
+      },
+      { dbName: DB_NAME, rows: history },
+    );
+    await page.reload();
+    const card = page.locator('.exercise-card', { hasText: 'Incline Dumbbell Press' }).first();
+    await card.getByRole('button', { name: /Incline Dumbbell Press/ }).click();
+    await expect(card.getByLabel('Set 1 of 2 lb, last time 36')).toHaveAttribute(
+      'placeholder',
+      '36',
+    );
+    await expect(card.getByLabel('Set 2 of 2 lb, last time 40')).toHaveAttribute(
+      'placeholder',
+      '40',
+    );
+    await expect(card.getByLabel('Set 2 of 2 Reps, last time 9')).toHaveAttribute(
+      'placeholder',
+      '9',
+    );
+    // Explicit input wins; the remaining visible hints are accepted by Complete all.
+    await card.getByLabel('Set 1 of 2 Reps, last time 11').fill('12');
+    await card.getByRole('button', { name: 'Complete all' }).click();
+    const persisted = async () =>
+      (await readRows<WorkoutSession>(page, 'sessions'))
+        .find((row) => row.id === current.id)!
+        .results.find((result) => result.exerciseId === exerciseId)!
+        .sets.filter((set) => !set.isWarmUp)
+        .map(({ weight, reps, completed }) => ({ weight, reps, completed }));
+    const expected = [
+      { weight: 36, reps: 12, completed: true },
+      { weight: 40, reps: 9, completed: true },
+    ];
+    await expect.poll(persisted).toEqual(expected);
+    await page.reload();
+    expect(await persisted()).toEqual(expected);
+    // Reconstructing hints never repairs or rewrites the original saved blanks.
+    const original = (await readRows<WorkoutSession>(page, 'sessions')).find(
+      (row) => row.id === 'history-partial',
+    )!;
+    expect(original.results[0]!.sets.filter((set) => !set.isWarmUp)[1]!.weight).toBeNull();
+  });
+
   test('ends Upper A with Cable Crunch into Cable Curl', async ({ page }) => {
     await freshApp(page);
     await beginSession(page);

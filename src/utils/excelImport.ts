@@ -22,8 +22,8 @@ export interface ParsedRow {
   bestReps: number | null;
 }
 
-const WEIGHT_HEADER = /^s\s*\d+\s*(wt|weight)$/i;
-const REPS_HEADER = /^s\s*\d+\s*reps$/i;
+const WEIGHT_HEADER = /^s\s*(\d+)\s*(wt|weight)$/i;
+const REPS_HEADER = /^s\s*(\d+)\s*reps$/i;
 
 function cellText(value: ExcelJS.CellValue): string {
   if (value == null) return '';
@@ -57,8 +57,8 @@ export function parseWorkbookRows(wb: ExcelJS.Workbook): ParsedRow[] {
 
   wb.eachSheet((sheet) => {
     let exerciseCol: number | null = null;
-    let weightCols: number[] = [];
-    let repsCols: number[] = [];
+    let weightCols: { col: number; set: number }[] = [];
+    let repsCols = new Map<number, number>();
 
     sheet.eachRow((row) => {
       const texts: string[] = [];
@@ -70,11 +70,13 @@ export function parseWorkbookRows(wb: ExcelJS.Workbook): ParsedRow[] {
       if (headerIndex > 0) {
         exerciseCol = headerIndex;
         weightCols = [];
-        repsCols = [];
+        repsCols = new Map();
         texts.forEach((t, col) => {
           if (!t) return;
-          if (WEIGHT_HEADER.test(t)) weightCols.push(col);
-          if (REPS_HEADER.test(t)) repsCols.push(col);
+          const weight = WEIGHT_HEADER.exec(t);
+          const reps = REPS_HEADER.exec(t);
+          if (weight) weightCols.push({ col, set: Number(weight[1]) });
+          if (reps) repsCols.set(Number(reps[1]), col);
         });
         return;
       }
@@ -83,17 +85,16 @@ export function parseWorkbookRows(wb: ExcelJS.Workbook): ParsedRow[] {
       const name = texts[exerciseCol];
       if (!name || name.length < 3) return;
       // Skip section headings like "Upper" / "Lower" that have no numeric data.
-      // Carry the column alongside the value: filtering first and then indexing
-      // the unfiltered column list reads reps from a different set whenever a
-      // blank or zero weight sits to the left of the best one.
+      // Carry the set number alongside the value. Missing/reordered columns or
+      // blank weights must never pair a weight with another set's reps.
       const scored = weightCols
-        .map((col) => ({ col, value: cellNumber(row.getCell(col).value) }))
-        .filter((x): x is { col: number; value: number } => x.value != null && x.value > 0);
+        .map(({ col, set }) => ({ set, value: cellNumber(row.getCell(col).value) }))
+        .filter((x): x is { set: number; value: number } => x.value != null && x.value > 0);
       if (scored.length === 0) return;
 
       const best = scored.reduce((a, b) => (b.value > a.value ? b : a));
       const bestWeight = best.value;
-      const repsCol = repsCols[weightCols.indexOf(best.col)];
+      const repsCol = repsCols.get(best.set);
       const bestReps = repsCol ? cellNumber(row.getCell(repsCol).value) : null;
 
       rows.push({ sheet: sheet.name, exercise: name, bestWeight, bestReps });

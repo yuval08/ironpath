@@ -12,6 +12,24 @@ interface FieldSpec {
 /** Fields that echo last time's value as their placeholder. */
 const HINTED: ReadonlySet<keyof SetResult> = new Set(['weight', 'reps', 'repsLeft', 'repsRight']);
 
+/** Accept only the hints the user can see, leaving explicit values and effort intact. */
+export function acceptSetHints(
+  set: SetResult,
+  hint: SetResult | null,
+  entryStyle: EntryStyle,
+  loadType: LoadType,
+  effort: EffortField = 'rpe',
+): SetResult {
+  const next = { ...set };
+  for (const { key } of fieldsFor(entryStyle, '', loadType, effort)) {
+    if (HINTED.has(key) && next[key] == null && hint?.[key] != null) {
+      // HINTED contains only numeric fields; do not copy completion or other metadata.
+      Object.assign(next, { [key]: hint[key] });
+    }
+  }
+  return next;
+}
+
 /**
  * Applies one typed value to a set. Per-side reps are usually equal, so the left
  * value fills the right until the right has been given its own — one number to

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from './db';
 import { migrateRecord } from './migrations';
 import {
@@ -20,11 +20,14 @@ import {
   isPausedOn,
   projectedDate,
   recordPR,
+  saveSession,
+  updateSettings,
   setActivePlan,
   syncPlansWithPrograms,
   applyProgramUpdate,
 } from './repository';
 import { fingerprint } from '@/utils/fingerprint';
+import { programFor } from '@/data/programs';
 import { makeResult } from '@/test/factories';
 import { DEFAULT_BAND_LABELS, SCHEMA_VERSION } from '@/types';
 import type { WorkoutPlan } from '@/types';
@@ -297,6 +300,83 @@ describe('session lifecycle', () => {
     expect(updated.currentDayIndex).toBe(1);
   });
 
+  it('advances the session’s own plan after the active program is switched', async () => {
+    const { plan } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, {});
+    const other = await createPlanFromProgram('movement-resilience');
+    await setActivePlan(other.id);
+
+    await completeSession(session);
+
+    expect((await getPlanById(plan.id))!.currentDayIndex).toBe(1);
+    expect((await getPlanById(other.id))!.currentDayIndex).toBe(0);
+    expect((await db.sessions.get(session.id))!.status).toBe('completed');
+  });
+
+  it('rolls back completion when advancing the plan fails, allowing retry', async () => {
+    const { plan } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, {});
+    const write = vi.spyOn(db.plans, 'put').mockRejectedValueOnce(new Error('Write failed'));
+    try {
+      await expect(completeSession(session)).rejects.toThrow('Write failed');
+    } finally {
+      write.mockRestore();
+    }
+
+    expect((await db.sessions.get(session.id))!.status).toBe('inProgress');
+    expect((await getPlanById(plan.id))!.currentDayIndex).toBe(0);
+    await completeSession(session);
+    expect((await db.sessions.get(session.id))!.status).toBe('completed');
+    expect((await getPlanById(plan.id))!.currentDayIndex).toBe(1);
+  });
+
+  it('serializes simultaneous completions and retains the first committed result', async () => {
+    const { plan } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, {});
+
+    await Promise.all([
+      completeSession({ ...session, sessionNotes: 'First finish' }),
+      completeSession({ ...session, sessionNotes: 'Stale second finish' }),
+    ]);
+
+    expect((await db.sessions.get(session.id))!.sessionNotes).toBe('First finish');
+    expect((await getPlanById(plan.id))!.currentDayIndex).toBe(1);
+  });
+
+  it('rejects stale autosaves after completion instead of reopening and overwriting the workout', async () => {
+    const { plan } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, {});
+    await completeSession({ ...session, sessionNotes: 'Completed workout' });
+
+    await saveSession({ ...session, sessionNotes: 'Old tab' });
+
+    expect(await db.sessions.get(session.id)).toMatchObject({
+      status: 'completed',
+      sessionNotes: 'Completed workout',
+    });
+  });
+
+  it('does not resurrect a deleted session when a stale autosave arrives', async () => {
+    const { plan } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, {});
+    await db.sessions.delete(session.id);
+
+    await saveSession(session);
+
+    expect(await db.sessions.get(session.id)).toBeUndefined();
+  });
+
+  it('leaves an abandoned session and its plan cursor unchanged on stale completion', async () => {
+    const { plan } = await ensureSeeded();
+    const session = await createSession(plan, currentDay(plan)!, {});
+    await saveSession({ ...session, status: 'abandoned' });
+
+    await expect(completeSession(session)).rejects.toThrow('removed or abandoned');
+
+    expect((await db.sessions.get(session.id))!.status).toBe('abandoned');
+    expect((await getPlanById(plan.id))!.currentDayIndex).toBe(0);
+  });
+
   it('rolls into the next week after the last day of the week', async () => {
     const { plan: seeded, settings } = await ensureSeeded();
     const daysInWeek = seeded.weeks[0]!.days.length;
@@ -339,6 +419,54 @@ describe('session lifecycle', () => {
     expect(updated.completedAt).toBeNull();
     expect(updated.currentWeek).toBe(5);
   });
+});
+
+describe('weight unit integrity', () => {
+  beforeEach(reset);
+
+  it('allows changing units before any weights or workouts have been stored', async () => {
+    const { plan } = await ensureSeeded();
+    await updateSettings({ weightUnit: 'kg' });
+    expect((await getSettings())!.weightUnit).toBe('kg');
+    expect((await getPlanById(plan.id))!.weeks).toEqual(
+      programFor(plan.programId).buildWeeks({ weightUnit: 'kg' }),
+    );
+  });
+
+  it('rolls back the unit change if rebuilding its prescription load steps fails', async () => {
+    await ensureSeeded();
+    const write = vi.spyOn(db.plans, 'put').mockRejectedValueOnce(new Error('Plan write failed'));
+    try {
+      await expect(updateSettings({ weightUnit: 'kg' })).rejects.toThrow('Plan write failed');
+    } finally {
+      write.mockRestore();
+    }
+    expect((await getSettings())!.weightUnit).toBe('lb');
+  });
+
+  it.each(['session', 'bodyweight', 'override', 'plan edit', 'plan load'] as const)(
+    'rejects relabeling existing %s weights',
+    async (source) => {
+      const { plan } = await ensureSeeded();
+      if (source === 'session') await createSession(plan, currentDay(plan)!, {});
+      if (source === 'bodyweight') await updateSettings({ bodyweight: 180 });
+      if (source === 'override') await updateSettings({ weightOverrides: { squat: 100 } });
+      if (source === 'plan edit') {
+        const edited = structuredClone(plan);
+        edited.weeks[0]!.days[0]!.prescriptions[0]!.sets += 1;
+        await db.plans.put(edited);
+      }
+      if (source === 'plan load') await createPlanFromProgram('movement-resilience');
+
+      await expect(updateSettings({ weightUnit: 'kg' })).rejects.toThrow(
+        'Weight units cannot change',
+      );
+      expect((await getSettings())!.weightUnit).toBe('lb');
+      // Other settings remain editable, including saving the already selected unit.
+      await updateSettings({ weightUnit: 'lb', userName: 'Changed' });
+      expect((await getSettings())!.userName).toBe('Changed');
+    },
+  );
 });
 
 describe('resume choices', () => {

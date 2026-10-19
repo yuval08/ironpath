@@ -17,6 +17,7 @@ import {
   currentDay,
   findInProgressSession,
   getSession,
+  getPlanById,
   getSuggestions,
   recordPR,
   saveSession,
@@ -27,6 +28,7 @@ import { programFor } from '@/data/programs';
 import {
   evaluateDoubleProgression,
   lastPerformance,
+  previousHints,
   previousResult,
   recentPerformances,
 } from '@/utils/doubleProgression';
@@ -39,15 +41,22 @@ import type {
   PainEntry,
   WorkoutDay,
   WorkoutSession,
+  WorkoutPlan,
 } from '@/types';
 
 export default function WorkoutScreen() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
-  const { plan, settings, sessions } = useAppData();
+  const { plan: activePlan, settings, sessions } = useAppData();
   const { toast } = useToast();
 
   const [session, setSession] = useState<WorkoutSession | null>(null);
+  const [sessionPlan, setSessionPlan] = useState<WorkoutPlan | undefined>();
+  const plan = session
+    ? activePlan?.id === session.planId
+      ? activePlan
+      : sessionPlan
+    : activePlan;
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [painBeforeOpen, setPainBeforeOpen] = useState(false);
@@ -68,8 +77,10 @@ export default function WorkoutScreen() {
     void (async () => {
       setLoading(true);
       const found = sessionId ? await getSession(sessionId) : await findInProgressSession();
+      const owner = found ? await getPlanById(found.planId) : undefined;
       if (cancelled) return;
       setSession(found ?? null);
+      setSessionPlan(owner);
       if (found) {
         stopwatch.reset(found.elapsedSeconds);
         if (found.warmUpCompletedAt && found.status === 'inProgress') stopwatch.start();
@@ -156,7 +167,12 @@ export default function WorkoutScreen() {
    */
   const priorSessions = useMemo(
     () =>
-      session ? sessions.filter((s) => s.id !== session.id && s.planId === session.planId) : [],
+      session
+        ? sessions.filter(
+            (s) =>
+              s.id !== session.id && s.planId === session.planId && s.startedAt < session.startedAt,
+          )
+        : [],
     [sessions, session],
   );
 
@@ -227,28 +243,45 @@ export default function WorkoutScreen() {
     if (!current || finishingRef.current) return;
     finishingRef.current = true;
     setFinishing(true);
-    const finished: WorkoutSession = {
+    let finished: WorkoutSession = {
       ...current,
+      status: 'completed',
+      completedAt: new Date().toISOString(),
       painAfter: painDraft,
       elapsedSeconds: elapsedRef.current,
     };
-    await completeSession(finished);
-    await capturePRs(finished);
-    const existing = await getSuggestions();
-    const all = await db.sessions.toArray();
-    const fresh = detectProgressions(
-      [...all.filter((s) => s.id !== finished.id), finished].sort((a, b) =>
-        a.startedAt.localeCompare(b.startedAt),
-      ),
-      existing,
-    );
-    if (fresh.length) await saveSuggestions(fresh);
+    try {
+      finished = await completeSession(finished);
+    } catch {
+      finishingRef.current = false;
+      setFinishing(false);
+      toast('Could not save workout. Please try again.');
+      return;
+    }
+    // Records and suggestions are derived data: a failure here must not leave
+    // an already saved workout stuck behind a permanently disabled Finish button.
+    try {
+      await capturePRs(finished);
+      const existing = await getSuggestions();
+      const all = await db.sessions.where('planId').equals(finished.planId).toArray();
+      const sessionPlan = await getPlanById(finished.planId);
+      const fresh = detectProgressions(
+        [...all.filter((s) => s.id !== finished.id), finished].sort((a, b) =>
+          a.startedAt.localeCompare(b.startedAt),
+        ),
+        existing,
+        sessionPlan,
+      );
+      if (fresh.length) await saveSuggestions(fresh);
+      toast(
+        fresh.length
+          ? `Workout saved · ${fresh.length} progression suggestion${fresh.length > 1 ? 's' : ''}`
+          : 'Workout saved',
+      );
+    } catch {
+      toast('Workout saved. Records or suggestions could not be updated.');
+    }
     setPainAfterOpen(false);
-    toast(
-      fresh.length
-        ? `Workout saved · ${fresh.length} progression suggestion${fresh.length > 1 ? 's' : ''}`
-        : 'Workout saved',
-    );
     navigate('/progress');
   };
 
@@ -288,7 +321,7 @@ export default function WorkoutScreen() {
     return {
       prescription,
       result,
-      previous,
+      previous: previousHints(priorSessions, exerciseId),
       history: recentPerformances(priorSessions, exerciseId, 3),
       lastSnapshot: lastPerformance(priorSessions, exerciseId),
       // Only a 'ready' verdict renders; anything else stays out of the way.
