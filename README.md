@@ -1,5 +1,7 @@
 # Ironpath
 
+Free, open-source gym and workout tracking app, licensed under the [MIT License](LICENSE).
+
 A mobile-first, installable PWA for tracking strength training. Works fully offline, stores
 everything locally in IndexedDB, and exports the complete history to a formatted Excel workbook. No
 backend, no login, no account.
@@ -393,3 +395,14 @@ icon — the filenames are referenced from `vite.config.ts` and `index.html`.
 The hypertrophy program does not prescribe strict pull-ups and never asks you to test them. The
 resilience block shows a target of 3–5 clean consecutive strict pull-ups; that is a direction to
 train toward, not a promise, and the app labels it as such.
+
+
+## License
+
+Copyright (c) 2026 yuval08. Released under the [MIT License](LICENSE).
+Anyone may use, copy, modify, and redistribute Ironpath, including commercially,
+provided the copyright and license notice are retained. The software is provided
+without warranty. Third-party dependencies retain their respective licenses.
+
+The license is also included in `public/LICENSE` for distribution with web and
+Android builds.
