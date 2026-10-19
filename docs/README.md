@@ -30,3 +30,6 @@ graph LR
   F --> C
   style A stroke-dasharray: 4 4
 ```
+
+- [Supported exercise IDs](exercise-ids.md) — canonical IDs and import aliases.
+- [Release 1.0.1](releases/1.0.1.md) — strength-plan import compatibility.

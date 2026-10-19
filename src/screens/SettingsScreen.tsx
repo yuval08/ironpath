@@ -1,3 +1,4 @@
+import { version as appVersion } from '../../package.json';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, FileSpreadsheet, HardDrive, Info, Upload, Video } from 'lucide-react';
@@ -298,7 +299,7 @@ export default function SettingsScreen() {
         <div className="row tight" style={{ justifyContent: 'space-between' }}>
           <span className="muted tiny">Build</span>
           <span className="tiny" style={{ fontWeight: 700 }}>
-            {__BUILD_ID__}
+            {appVersion} · {__BUILD_ID__}
           </span>
         </div>
         <p className="muted tiny" style={{ margin: '8px 0 0' }}>

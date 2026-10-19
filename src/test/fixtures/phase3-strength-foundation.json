@@ -1,0 +1,646 @@
+{
+  "id": "strength-foundation-10wk",
+  "idPrefix": "sf10",
+  "name": "Phase 3 — Strength Foundation (10 Weeks)",
+  "shortName": "Strength Foundation",
+  "description": "4-day upper/lower strength + hypertrophy; 10-minute pre-workout mobility and 8-minute backward treadmill walk. Pull-up progress with two different assistance levels. Exercise IDs require matching the app library.",
+  "loadSteps": {
+    "kg": {
+      "barbell": 2.5,
+      "dumbbell": 2,
+      "machine": 2.5,
+      "cable": 2.5
+    },
+    "lb": {
+      "barbell": 5,
+      "dumbbell": 5,
+      "machine": 5,
+      "cable": 5
+    }
+  },
+  "days": [
+    {
+      "weekday": "monday",
+      "dayType": "upperA",
+      "title": "Upper A — Pull Strength + Chest",
+      "focus": "Heavy assisted pull-ups, incline press, horizontal and vertical pulling",
+      "blocks": [
+        {
+          "key": "ma-pull",
+          "label": "Assisted pull-up — less assistance",
+          "exercises": [
+            {
+              "exercise": "assisted-pull-up",
+              "sets": 4,
+              "reps": [2, 4],
+              "role": "main",
+              "progression": "bandAssist",
+              "rir": [1, 3],
+              "restSeconds": 120,
+              "band": "medium",
+              "notes": "Use LESS assistance than Thursday, even if only 2–3 full-ROM reps. The band enum is provisional; use the actual lighter band available."
+            }
+          ]
+        },
+        {
+          "key": "ma-bench",
+          "label": "Close-grip incline barbell bench",
+          "exercises": [
+            {
+              "exercise": "incline-barbell-bench-press",
+              "sets": 4,
+              "reps": [5, 8],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 120,
+              "loadStep": "barbell",
+              "rampSets": 2,
+              "notes": "Use a relatively close, comfortable grip; incline should target chest and triceps. No forced grinding."
+            }
+          ]
+        },
+        {
+          "key": "ma-pulldown",
+          "label": "Underhand lat pulldown",
+          "exercises": [
+            {
+              "exercise": "underhand-lat-pulldown",
+              "sets": 3,
+              "reps": [6, 8],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 90,
+              "loadStep": "machine"
+            }
+          ]
+        },
+        {
+          "key": "ma-row",
+          "label": "Bent-over barbell row",
+          "exercises": [
+            {
+              "exercise": "barbell-bent-over-row",
+              "sets": 3,
+              "reps": [5, 8],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 120,
+              "loadStep": "barbell",
+              "rampSets": 1,
+              "notes": "Controlled torso angle and stable bracing. Avoid heaving or excessive lower-back fatigue."
+            }
+          ]
+        },
+        {
+          "key": "ma-arms",
+          "label": "Superset: Lateral raise + biceps curl",
+          "exercises": [
+            {
+              "exercise": "dumbbell-lateral-raise",
+              "sets": 3,
+              "reps": [10, 15],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "loadStep": "dumbbell"
+            },
+            {
+              "exercise": "dumbbell-biceps-curl",
+              "sets": 3,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "loadStep": "dumbbell"
+            }
+          ],
+          "superset": true,
+          "restSeconds": 75
+        },
+        {
+          "key": "ma-triceps",
+          "label": "Triceps pressdown",
+          "exercises": [
+            {
+              "exercise": "triceps-pushdown",
+              "sets": 3,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 60,
+              "loadStep": "cable"
+            }
+          ]
+        },
+        {
+          "key": "ma-fly",
+          "label": "Chest fly",
+          "exercises": [
+            {
+              "exercise": "cable-chest-fly",
+              "sets": 2,
+              "reps": [10, 15],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 60,
+              "loadStep": "cable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "weekday": "tuesday",
+      "dayType": "lowerA",
+      "title": "Lower A — Squat Strength",
+      "focus": "Squat, knee resilience, hamstrings, glutes and calves",
+      "blocks": [
+        {
+          "key": "tu-squat",
+          "label": "Smith squat",
+          "exercises": [
+            {
+              "exercise": "smith-machine-squat",
+              "sets": 4,
+              "reps": [5, 8],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 150,
+              "loadStep": "machine",
+              "rampSets": 2,
+              "notes": "Control depth to a comfortable pain-free range. Do not superset."
+            }
+          ]
+        },
+        {
+          "key": "tu-legpair",
+          "label": "Superset: leg curl + leg extension",
+          "exercises": [
+            {
+              "exercise": "seated-leg-curl",
+              "sets": 3,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "loadStep": "machine"
+            },
+            {
+              "exercise": "leg-extension",
+              "sets": 3,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "loadStep": "machine"
+            }
+          ],
+          "superset": true,
+          "restSeconds": 75
+        },
+        {
+          "key": "tu-curl-extra",
+          "label": "Extra fourth leg-curl set",
+          "exercises": [
+            {
+              "exercise": "seated-leg-curl",
+              "sets": 1,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 75,
+              "loadStep": "machine",
+              "notes": "Fourth total set for hamstrings; previous 3 sets were paired with extensions."
+            }
+          ]
+        },
+        {
+          "key": "tu-hip",
+          "label": "Hip thrust",
+          "exercises": [
+            {
+              "exercise": "hip-thrust",
+              "sets": 3,
+              "reps": [6, 10],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 90,
+              "loadStep": "barbell"
+            }
+          ]
+        },
+        {
+          "key": "tu-calfpair",
+          "label": "Superset: calf raise + tibialis raise",
+          "exercises": [
+            {
+              "exercise": "standing-calf-raise",
+              "sets": 2,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "loadStep": "machine"
+            },
+            {
+              "exercise": "tibialis-raise",
+              "sets": 2,
+              "reps": [15, 20],
+              "role": "accessory",
+              "progression": "reps",
+              "rir": [1, 2]
+            }
+          ],
+          "superset": true,
+          "restSeconds": 60
+        },
+        {
+          "key": "tu-calfextra",
+          "label": "Extra calf raise",
+          "exercises": [
+            {
+              "exercise": "standing-calf-raise",
+              "sets": 1,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 60,
+              "loadStep": "machine"
+            }
+          ]
+        },
+        {
+          "key": "tu-abs",
+          "label": "Cable crunch",
+          "exercises": [
+            {
+              "exercise": "cable-crunch",
+              "sets": 2,
+              "reps": [10, 15],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 60,
+              "loadStep": "cable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "weekday": "thursday",
+      "dayType": "upperB",
+      "title": "Upper B — Pull Volume + Shoulders",
+      "focus": "Higher rep assisted pull-ups and strong shoulder pressing",
+      "blocks": [
+        {
+          "key": "th-pull",
+          "label": "Assisted pull-up — current heavier band",
+          "exercises": [
+            {
+              "exercise": "assisted-pull-up",
+              "sets": 3,
+              "reps": [6, 8],
+              "role": "main",
+              "progression": "bandAssist",
+              "rir": [1, 3],
+              "restSeconds": 120,
+              "band": "heavy",
+              "notes": "Use more assistance than Monday. When you reach 8/8/8 with clean full-ROM reps, reduce assistance."
+            }
+          ]
+        },
+        {
+          "key": "th-shoulder",
+          "label": "Seated DB shoulder press",
+          "exercises": [
+            {
+              "exercise": "seated-dumbbell-shoulder-press",
+              "sets": 4,
+              "reps": [5, 8],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 120,
+              "loadStep": "dumbbell",
+              "rampSets": 2
+            }
+          ]
+        },
+        {
+          "key": "th-pulldown",
+          "label": "Underhand lat pulldown",
+          "exercises": [
+            {
+              "exercise": "underhand-lat-pulldown",
+              "sets": 3,
+              "reps": [6, 8],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 90,
+              "loadStep": "machine"
+            }
+          ]
+        },
+        {
+          "key": "th-chest",
+          "label": "Flat DB chest press",
+          "exercises": [
+            {
+              "exercise": "flat-dumbbell-bench-press",
+              "sets": 3,
+              "reps": [6, 10],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 90,
+              "loadStep": "dumbbell"
+            }
+          ]
+        },
+        {
+          "key": "th-ways",
+          "label": "Shoulder 6-ways",
+          "exercises": [
+            {
+              "exercise": "shoulder-six-ways",
+              "sets": 3,
+              "reps": [10, 15],
+              "role": "accessory",
+              "progression": "reps",
+              "rir": [1, 2],
+              "restSeconds": 75,
+              "notes": "One full 6-way sequence counts as a rep. Use light controlled loads."
+            }
+          ]
+        },
+        {
+          "key": "th-curl",
+          "label": "Hammer curl",
+          "exercises": [
+            {
+              "exercise": "dumbbell-hammer-curl",
+              "sets": 3,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 60,
+              "loadStep": "dumbbell"
+            }
+          ]
+        },
+        {
+          "key": "th-tri",
+          "label": "Overhead cable triceps extension",
+          "exercises": [
+            {
+              "exercise": "overhead-cable-triceps-extension",
+              "sets": 3,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 60,
+              "loadStep": "cable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "weekday": "friday",
+      "dayType": "lowerB",
+      "title": "Lower B — Leg Press + Posterior Chain",
+      "focus": "Press strength, hamstrings, knee-friendly single leg work and glutes",
+      "blocks": [
+        {
+          "key": "fr-press",
+          "label": "Leg press",
+          "exercises": [
+            {
+              "exercise": "leg-press",
+              "sets": 4,
+              "reps": [5, 8],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 150,
+              "loadStep": "machine",
+              "rampSets": 2,
+              "notes": "No superset. Use comfortable controlled range of motion."
+            }
+          ]
+        },
+        {
+          "key": "fr-unilateral",
+          "label": "Supported step-up",
+          "exercises": [
+            {
+              "exercise": "step-up",
+              "sets": 2,
+              "reps": [8, 10],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 90,
+              "loadStep": "dumbbell",
+              "entryStyle": "repsPerSide",
+              "perSide": true,
+              "notes": "Substitute supported split squat if preferred, provided knee is comfortable."
+            }
+          ]
+        },
+        {
+          "key": "fr-curl",
+          "label": "Leg curl",
+          "exercises": [
+            {
+              "exercise": "seated-leg-curl",
+              "sets": 4,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 75,
+              "loadStep": "machine"
+            }
+          ]
+        },
+        {
+          "key": "fr-hip",
+          "label": "Hip thrust",
+          "exercises": [
+            {
+              "exercise": "hip-thrust",
+              "sets": 3,
+              "reps": [6, 10],
+              "role": "main",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 90,
+              "loadStep": "barbell"
+            }
+          ]
+        },
+        {
+          "key": "fr-calfpair",
+          "label": "Superset: calf raise + tibialis raise",
+          "exercises": [
+            {
+              "exercise": "standing-calf-raise",
+              "sets": 2,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "loadStep": "machine"
+            },
+            {
+              "exercise": "tibialis-raise",
+              "sets": 2,
+              "reps": [15, 20],
+              "role": "accessory",
+              "progression": "reps",
+              "rir": [1, 2]
+            }
+          ],
+          "superset": true,
+          "restSeconds": 60
+        },
+        {
+          "key": "fr-calfextra",
+          "label": "Extra calf raise",
+          "exercises": [
+            {
+              "exercise": "standing-calf-raise",
+              "sets": 1,
+              "reps": [8, 12],
+              "role": "accessory",
+              "progression": "double",
+              "rir": [1, 2],
+              "restSeconds": 60,
+              "loadStep": "machine"
+            }
+          ]
+        },
+        {
+          "key": "fr-abs",
+          "label": "Leg raise",
+          "exercises": [
+            {
+              "exercise": "lying-leg-raise",
+              "sets": 2,
+              "reps": [10, 15],
+              "role": "accessory",
+              "progression": "reps",
+              "rir": [1, 2],
+              "restSeconds": 60
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "weeks": [
+    {
+      "phase": "reload",
+      "title": "Reload Week 1",
+      "focus": "Return to strength work with good technique",
+      "setCap": {
+        "main": 2,
+        "other": 2
+      },
+      "rir": [3, 3],
+      "guidance": [
+        "About 3 RIR; do not chase max loads",
+        "Practice assisted pull-up range and band selection"
+      ]
+    },
+    {
+      "phase": "reload",
+      "title": "Reload Week 2",
+      "focus": "Build toward full training volume",
+      "setCap": {
+        "main": 3,
+        "other": 3
+      },
+      "rir": [2, 3],
+      "guidance": ["2–3 RIR; establish conservative loads"]
+    },
+    {
+      "phase": "base",
+      "title": "Strength Development {n}",
+      "focus": "Double progression on strength lifts; retain hypertrophy work",
+      "repeat": 3,
+      "rir": [1, 2],
+      "guidance": ["Lift with clean technique; add reps before load", "Avoid compound failure"]
+    },
+    {
+      "phase": "deload",
+      "title": "Week 6 — Conditional Deload",
+      "focus": "Reduce fatigue; optional deload based on recovery",
+      "setCap": {
+        "main": 2,
+        "other": 1
+      },
+      "rir": [3, 4],
+      "guidance": [
+        "This plan schedules a deload; if recovery is excellent, adjust week in app if supported"
+      ]
+    },
+    {
+      "phase": "base",
+      "title": "Strength Development {n}",
+      "focus": "Resume controlled progression",
+      "repeat": 3,
+      "rir": [1, 2]
+    },
+    {
+      "phase": "base",
+      "title": "Week 10 — Assessment",
+      "focus": "Evaluate rep PRs and pull-up assistance; no maximal 1RM test",
+      "rir": [1, 2],
+      "guidance": [
+        "Assess improvements in loads, reps and band assistance without going to failure"
+      ]
+    }
+  ],
+  "warmUp": [
+    {
+      "id": "pre-mobility",
+      "label": "10 minutes of familiar pre-workout mobility and gentle stretching"
+    },
+    {
+      "id": "ramp-main",
+      "label": "Before main strength lifts, perform 1–3 technique/ramp sets (tracked separately as warm-up sets)"
+    },
+    {
+      "id": "post-backward-walk",
+      "label": "After lifting: 8 minutes backward treadmill walking at a safe, controlled pace for knee conditioning"
+    }
+  ],
+  "keyLifts": [
+    "assisted-pull-up",
+    "incline-barbell-bench-press",
+    "barbell-bent-over-row",
+    "smith-machine-squat",
+    "seated-dumbbell-shoulder-press",
+    "leg-press"
+  ],
+  "timing": {
+    "secondsPerRep": 3,
+    "transitionSeconds": 40,
+    "intraSupersetSeconds": 15
+  }
+}

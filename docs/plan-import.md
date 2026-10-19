@@ -18,7 +18,7 @@ remain on the device because load steps are compiled in that unit.
 1. Copy [plan-import-example.json](plan-import-example.json), or the more extensive
    [built-in hypertrophy definition](../src/data/programs/definitions/hypertrophy-14wk.json).
 2. Choose exercise IDs from [the exercise library](../src/data/exercises.ts).
-   Use the exact `id`, not the display name. Custom exercise definitions are not supported.
+   Use the exact `id`, not the display name. See [supported IDs](exercise-ids.md) for the full list and accepted aliases. Custom exercise definitions are not supported.
 3. Define one canonical training week in `days`, then its phases in `weeks`.
 4. Save as JSON with double quotes, no comments, and no trailing commas.
 5. Import the file. Errors identify the invalid field or exercise; failed imports

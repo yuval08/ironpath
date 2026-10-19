@@ -234,6 +234,23 @@ export const EXERCISE_VIDEOS: VideoReference[] = [
   search('lying-leg-raise', 'lying leg raise technique lower abs', 'Calisthenicmovement'),
   search('cable-curl', 'cable curl proper form biceps', 'Jeff Nippard'),
   search('rope-triceps-pressdown', 'rope triceps pushdown proper form', 'Jeff Nippard'),
+  search(
+    'incline-barbell-bench-press',
+    'incline barbell bench press technique tutorial',
+    'YouTube search',
+  ),
+  search('underhand-lat-pulldown', 'underhand lat pulldown technique tutorial', 'YouTube search'),
+  search('barbell-bent-over-row', 'bent-over barbell row technique tutorial', 'YouTube search'),
+  search('dumbbell-biceps-curl', 'dumbbell biceps curl technique tutorial', 'YouTube search'),
+  search('triceps-pushdown', 'triceps pushdown technique tutorial', 'YouTube search'),
+  search('cable-chest-fly', 'cable chest fly technique tutorial', 'YouTube search'),
+  search('shoulder-six-ways', 'shoulder six-ways technique tutorial', 'YouTube search'),
+  search('dumbbell-hammer-curl', 'dumbbell hammer curl technique tutorial', 'YouTube search'),
+  search(
+    'overhead-cable-triceps-extension',
+    'overhead cable triceps extension technique tutorial',
+    'YouTube search',
+  ),
 ];
 
 const BY_ID: Record<string, VideoReference> = Object.fromEntries(

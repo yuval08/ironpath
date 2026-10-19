@@ -1,5 +1,6 @@
 import { programDefinitionSchema } from '@/data/programs/programSchema';
 import { compileProgram } from '@/data/programs/compile';
+import { canonicalImportExerciseId } from '@/data/exerciseAliases';
 import { EXERCISE_BY_ID } from '@/data/exercises';
 import { db, newId, nowIso, SETTINGS_ID } from '@/db/db';
 import { defaultStartDate, getSettings } from '@/db/repository';
@@ -20,6 +21,20 @@ export async function importPlan(
     throw new Error(`Invalid plan at ${issue.path.join('.') || 'root'}: ${issue.message}`);
   }
   const definition = parsed.data;
+  // Normalize every reference, including key lifts and warm-up links, before
+  // validation so aliases never split a movement's stored performance history.
+  definition.keyLifts = definition.keyLifts.map(canonicalImportExerciseId);
+  for (const item of definition.warmUp) {
+    if (item.exerciseId) item.exerciseId = canonicalImportExerciseId(item.exerciseId);
+  }
+  for (const day of definition.days) {
+    for (const block of day.blocks) {
+      for (const exercise of block.exercises) {
+        exercise.exercise = canonicalImportExerciseId(exercise.exercise);
+        exercise.alternatives = exercise.alternatives.map(canonicalImportExerciseId);
+      }
+    }
+  }
   const weekCount = definition.weeks.reduce((sum, week) => sum + (week.repeat ?? 1), 0);
   if (weekCount > 52) throw new Error('A plan can contain at most 52 weeks, including repeats.');
   const weekdays = definition.days.map((day) => day.weekday);
