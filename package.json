@@ -1,7 +1,7 @@
 {
   "name": "ironpath",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.5",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -16,7 +16,10 @@
     "e2e": "playwright test",
     "icons": "node scripts/generate-icons.mjs",
     "android:sync": "npm run build -- --mode android && cap sync android",
-    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug"
+    "android:apk": "npm run android:sync && cd android && ./gradlew :app:assembleDebug",
+    "watch:apk": "cd android && ./gradlew :wear:assembleDebug",
+    "watch:test": "cd android && ./gradlew :wear-link:testDebugUnitTest",
+    "android:pair-apks": "npm run android:sync && cd android && ./gradlew :app:assembleDebug :wear:assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

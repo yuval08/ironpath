@@ -1,4 +1,6 @@
 import { DEFAULT_BAND_LABELS, SCHEMA_VERSION } from '@/types';
+import { withSessionIdentity } from '@/utils/sessionIdentity';
+import type { WorkoutSession } from '@/types';
 
 /**
  * Record-level migrations, applied on read/import to any row whose
@@ -128,6 +130,17 @@ export const MIGRATIONS: RecordMigration[] = [
             keepScreenOn: row.keepScreenOn ?? false,
             notifyOnRestEnd: row.notifyOnRestEnd ?? false,
           },
+  },
+  {
+    to: 6,
+    describe: 'Stable set IDs and session revisions for the watch companion',
+    migrate: (row) =>
+      Array.isArray(row.results)
+        ? (withSessionIdentity(row as unknown as WorkoutSession) as unknown as Record<
+            string,
+            unknown
+          >)
+        : row,
   },
 ];
 

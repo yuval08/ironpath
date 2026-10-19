@@ -72,6 +72,25 @@ and allow installation from that file manager/browser when Android asks.
 This build is for direct installation; Play Store distribution needs release signing.
 Keep the same signing key for future updates to preserve the installed app's data.
 
+The native Galaxy Watch7 companion is available as the first working sideloaded
+version: **phone 1.0.5 + watch 0.4.0**. It supports rep/weight editing, set
+completion/undo, local rest countdowns, verified return to phone control, and
+rejected-action recovery. Both APKs use the same application ID and signing key;
+update them together without uninstalling either app.
+
+Start a workout and finish the warm-up on the phone, then choose **Send workout
+to watch**. Use the watch to log sets and rest. Before editing or finishing on the
+phone, choose **Take control on phone / sync watch** and wait for **Phone has
+control**. The user confirmed this basic handoff and return-to-phone flow works.
+The phone must reopen to commit queued watch actions into workout history.
+
+See the [watch user guide](plan/galaxy-watch-user-guide.md) for installation,
+normal use, and recovery. Build both APKs with `npm run android:pair-apks`; the
+[phase tracker](plan/galaxy-watch-phases.md) records signing checks and validation.
+Repeated screen-off alerts, disconnected/locked-phone logging, restart/conflict
+recovery, and workout-length battery use remain physical qualification checks.
+No app store is required.
+
 Excel exports and JSON backups open Android's share sheet so you can save them using
 an installed file app or send them to another app. Imports use the system file picker.
 Browser/PWA data is separate from Android app data: export a JSON backup from the

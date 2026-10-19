@@ -135,6 +135,7 @@ export async function restoreBackup(json: unknown): Promise<RestoreResult> {
       db.suggestions,
       db.assessments,
       db.importedWeights,
+      db.meta,
     ],
     async () => {
       await Promise.all([
@@ -154,6 +155,10 @@ export async function restoreBackup(json: unknown): Promise<RestoreResult> {
       await db.suggestions.bulkPut(migrateAll(data.suggestions));
       await db.assessments.bulkPut(migrateAll(data.assessments));
       await db.importedWeights.bulkPut(migrateAll(data.importedWeights));
+      // A restored session may have the same ID/revision but different content.
+      // Keep replay evidence, rotate the epoch, and never silently reuse an old handoff.
+      await db.meta.put({ key: 'watch:epoch', value: crypto.randomUUID() });
+      await db.meta.delete('watch:selected');
     },
   );
 

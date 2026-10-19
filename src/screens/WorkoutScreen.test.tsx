@@ -27,6 +27,7 @@ beforeEach(async () => {
   vi.resetAllMocks();
   await db.sessions.clear();
   await db.plans.clear();
+  await db.meta.clear();
   const plan = makePlan();
   const session = makeSession({
     id: 'session_test',
@@ -110,14 +111,20 @@ describe('workout completion failure recovery', () => {
     const ui = await render();
     await ui.click('Save & complete workout');
     expect(mocks.navigate).not.toHaveBeenCalled();
-    expect(mocks.toast).toHaveBeenCalledWith('Could not save workout. Please try again.');
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(mocks.toast).toHaveBeenCalledWith('Could not save workout. Please try again.'),
+      );
+    });
     const retry = [...document.querySelectorAll('button')].find(
       (b) => b.textContent === 'Save & complete workout',
     )!;
     expect(retry.disabled).toBe(false);
 
     await ui.click('Save & complete workout');
-    expect(completeSession).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.waitFor(() => expect(completeSession).toHaveBeenCalledTimes(2));
+    });
     expect(vi.mocked(completeSession).mock.lastCall![0].status).toBe('completed');
     await act(async () => {
       await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/progress'));
@@ -129,10 +136,32 @@ describe('workout completion failure recovery', () => {
     vi.mocked(getSuggestions).mockRejectedValueOnce(new Error('Suggestions failed'));
     const ui = await render();
     await ui.click('Save & complete workout');
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/progress'));
+    });
     expect(completeSession).toHaveBeenCalledTimes(1);
     expect(mocks.navigate).toHaveBeenCalledWith('/progress');
     expect(mocks.toast).toHaveBeenCalledWith(
       'Workout saved. Records or suggestions could not be updated.',
     );
+  });
+  it('finishes from the latest imported database values rather than the open screen copy', async () => {
+    vi.mocked(completeSession).mockImplementationOnce(async (s) => s);
+    const ui = await render();
+    await db.sessions.update('session_test', {
+      sessionNotes: 'Imported while screen was open',
+      syncRevision: 4,
+    });
+    await ui.click('Save & complete workout');
+    await act(async () => {
+      await vi.waitFor(() => expect(completeSession).toHaveBeenCalledOnce());
+    });
+    expect(vi.mocked(completeSession).mock.lastCall![0]).toMatchObject({
+      sessionNotes: 'Imported while screen was open',
+      syncRevision: 4,
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/progress'));
+    });
   });
 });

@@ -12,6 +12,17 @@ import { WarmUp } from '@/components/WarmUp';
 import { FollowAlongVideo } from '@/components/FollowAlongVideo';
 import { EMPTY_PAIN, PainForm } from '@/components/PainScale';
 import { Sheet } from '@/components/Sheet';
+import { useLiveQuery } from 'dexie-react-hooks';
+import {
+  prepareWatchFinish,
+  reconcileWatchInbox,
+  watchSelection,
+  allowOfflinePhoneControl,
+  WatchUnavailableError,
+} from '@/watch/transport';
+import { watchRecoveryActions } from '@/watch/recovery';
+import { WatchWorkoutHandoff } from '@/components/WatchWorkoutHandoff';
+import { prescriptionGroups } from '@/utils/workoutExecution';
 import {
   completeSession,
   createSession,
@@ -22,6 +33,7 @@ import {
   getSuggestions,
   recordPR,
   saveSession,
+  saveSessionElapsed,
   saveSuggestions,
 } from '@/db/repository';
 import { detectProgressions } from '@/utils/progression';
@@ -68,6 +80,11 @@ export default function WorkoutScreen() {
 
   const stopwatch = useStopwatch(0, false);
   const { rest } = useWorkoutAlerts();
+  const watch = useLiveQuery(watchSelection, [], undefined);
+  const watchLocked =
+    !!watch &&
+    watch.sessionId === session?.id &&
+    (!watch.owner || watch.owner === 'watch' || watch.owner === 'pausing');
 
   /* ---------------------------------------------------------- loading */
   useEffect(() => {
@@ -101,13 +118,20 @@ export default function WorkoutScreen() {
 
   const sessionId_ = session?.id;
   const sessionStatus = session?.status;
+  const liveSession = sessions.find((row) => row.id === sessionId_);
+  useEffect(() => {
+    if (liveSession && (liveSession.syncRevision ?? 0) > (sessionRef.current?.syncRevision ?? 0)) {
+      sessionRef.current = liveSession;
+      setSession(liveSession);
+    }
+  }, [liveSession]);
   const timerRunning = stopwatch.running;
 
   useEffect(() => {
     if (!sessionId_ || sessionStatus !== 'inProgress') return undefined;
 
     const flush = () => {
-      void db.sessions.update(sessionId_, { elapsedSeconds: elapsedRef.current });
+      void saveSessionElapsed(sessionId_, elapsedRef.current).catch(() => {});
     };
     const interval = window.setInterval(flush, 5000);
     // Backgrounding on iOS can discard the tab outright — persist on the way out.
@@ -138,7 +162,7 @@ export default function WorkoutScreen() {
       void getSession(sessionId_).then((fresh) => {
         if (!fresh) return;
         const mine = sessionRef.current;
-        if (mine && fresh.updatedAt <= mine.updatedAt) return;
+        if (mine && (fresh.syncRevision ?? 0) <= (mine.syncRevision ?? 0)) return;
         sessionRef.current = fresh;
         setSession(fresh);
       });
@@ -179,11 +203,40 @@ export default function WorkoutScreen() {
   const sessionRef = useRef<WorkoutSession | null>(null);
   sessionRef.current = session;
 
-  const persist = useCallback(async (next: WorkoutSession) => {
-    sessionRef.current = next;
-    setSession(next);
-    await saveSession(next);
-  }, []);
+  const pendingSave = useRef<Promise<void>>(Promise.resolve());
+  const phoneSaveFailed = useRef(false);
+  const persist = useCallback(
+    (next: WorkoutSession) => {
+      if (finishingRef.current) return Promise.resolve();
+      // Advance the local revision synchronously before another input handler runs.
+      const optimistic = { ...next, syncRevision: (next.syncRevision ?? 0) + 1 };
+      sessionRef.current = optimistic;
+      setSession(optimistic);
+      const write = pendingSave.current.then(async () => {
+        try {
+          const control = await watchSelection();
+          if (
+            control?.sessionId === next.id &&
+            (!control.owner || control.owner === 'watch' || control.owner === 'pausing')
+          )
+            throw new Error('Take control on the phone before editing this workout.');
+          const saved = await saveSession(next);
+          if (!saved) throw new Error('Workout was removed or closed.');
+        } catch {
+          phoneSaveFailed.current = true;
+          const fresh = await getSession(next.id).catch(() => undefined);
+          if (fresh) {
+            sessionRef.current = fresh;
+            setSession(fresh);
+          }
+          toast('This change could not be saved. Review the latest workout values and retry.');
+        }
+      });
+      pendingSave.current = write;
+      return write;
+    },
+    [toast],
+  );
 
   /** Applies a partial change against the LIVE session, never a render closure. */
   const patchSession = (patch: Partial<WorkoutSession>) => {
@@ -241,20 +294,52 @@ export default function WorkoutScreen() {
     if (!current || finishingRef.current) return;
     finishingRef.current = true;
     setFinishing(true);
-    let finished: WorkoutSession = {
-      ...current,
-      status: 'completed',
-      completedAt: new Date().toISOString(),
-      painAfter: painDraft,
-      elapsedSeconds: elapsedRef.current,
-    };
+    let finished: WorkoutSession;
+    let checkingWatch = true;
     try {
+      await pendingSave.current;
+      if (phoneSaveFailed.current) {
+        phoneSaveFailed.current = false;
+        throw new Error(
+          'Some phone edits could not be saved. Review the latest values before finishing.',
+        );
+      }
+      try {
+        await prepareWatchFinish(current.id);
+      } catch (error) {
+        if (
+          !(error instanceof WatchUnavailableError) ||
+          !window.confirm(
+            'The watch has not confirmed all saved sets. Complete this workout without them? Later arrivals will be kept for review and will not change this completed workout.',
+          )
+        )
+          throw error;
+        await allowOfflinePhoneControl(current.id);
+        if ((await watchRecoveryActions(current.id)).length)
+          throw new Error('Review the saved watch actions before finishing.');
+      }
+      const latest = await getSession(current.id);
+      if (!latest || latest.status !== 'inProgress')
+        throw new Error('This workout was removed or already completed.');
+      finished = {
+        ...latest,
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        painAfter: painDraft,
+        elapsedSeconds: elapsedRef.current,
+      };
+      checkingWatch = false;
       finished = await completeSession(finished);
       rest.stop();
-    } catch {
+      void reconcileWatchInbox().catch(() => {});
+    } catch (error) {
       finishingRef.current = false;
       setFinishing(false);
-      toast('Could not save workout. Please try again.');
+      toast(
+        checkingWatch && error instanceof Error
+          ? error.message
+          : 'Could not save workout. Please try again.',
+      );
       return;
     }
     // Records and suggestions are derived data: a failure here must not leave
@@ -357,115 +442,122 @@ export default function WorkoutScreen() {
         )}
       </div>
 
-      <WarmUp
-        items={session.warmUp}
-        catalog={programFor(plan).warmUp}
-        finished={warmUpDone}
-        onChange={(warmUp) => patchSession({ warmUp })}
-        onFinish={() => {
-          patchSession({ warmUpCompletedAt: new Date().toISOString() });
-          stopwatch.reset(0);
-          stopwatch.start();
-          if (!session.painBefore) {
-            setPainDraft(EMPTY_PAIN);
-            setPainBeforeOpen(true);
-          }
-        }}
-      />
+      <WatchWorkoutHandoff key={session.id} sessionId={session.id} />
 
-      {!session.painBefore && warmUpDone && (
-        <button
-          className="btn block"
-          style={{ marginBottom: 12 }}
-          onClick={() => {
-            setPainDraft(EMPTY_PAIN);
-            setPainBeforeOpen(true);
+      <fieldset
+        disabled={watchLocked || finishing}
+        style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+      >
+        <WarmUp
+          items={session.warmUp}
+          catalog={programFor(plan).warmUp}
+          finished={warmUpDone}
+          onChange={(warmUp) => patchSession({ warmUp })}
+          onFinish={() => {
+            patchSession({ warmUpCompletedAt: new Date().toISOString() });
+            stopwatch.reset(0);
+            stopwatch.start();
+            if (!session.painBefore) {
+              setPainDraft(EMPTY_PAIN);
+              setPainBeforeOpen(true);
+            }
           }}
-        >
-          Record pain before training
-        </button>
-      )}
+        />
 
-      {warmUpDone && session.dayType === 'mobility' && <FollowAlongVideo />}
+        {!session.painBefore && warmUpDone && (
+          <button
+            className="btn block"
+            style={{ marginBottom: 12 }}
+            onClick={() => {
+              setPainDraft(EMPTY_PAIN);
+              setPainBeforeOpen(true);
+            }}
+          >
+            Record pain before training
+          </button>
+        )}
 
-      {warmUpDone &&
-        blocks.map((block) => {
-          // A lone superset names itself in its own header — a block heading above
-          // it would just repeat 'Superset A'.
-          const soloSuperset = block.units.length === 1 && block.units[0]?.supersetKey != null;
-          return (
-            <div key={block.label}>
-              {!soloSuperset && <div className="block-head">{block.label}</div>}
-              {block.units.map((unit) =>
-                unit.supersetKey != null && unit.members.length > 1 ? (
-                  <SupersetGroup
-                    key={unit.supersetKey}
-                    members={unit.members}
-                    weightUnit={settings.weightUnit}
-                    bandLabels={bandLabels}
-                    expandedId={expanded}
-                    currentId={nextExercise?.prescriptionId ?? null}
-                    onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
-                    onFocus={focusExercise}
-                    autoAdvance={settings.autoCollapseCompleted}
-                    onChange={updateResult}
-                    onRest={(seconds) => rest.start(seconds)}
-                  />
-                ) : (
-                  unit.members.map((member) => (
-                    <ExerciseCard
-                      key={member.prescription.id}
-                      prescription={member.prescription}
-                      result={member.result}
+        {warmUpDone && session.dayType === 'mobility' && <FollowAlongVideo />}
+
+        {warmUpDone &&
+          blocks.map((block) => {
+            // A lone superset names itself in its own header — a block heading above
+            // it would just repeat 'Superset A'.
+            const soloSuperset = block.units.length === 1 && block.units[0]?.supersetKey != null;
+            return (
+              <div key={block.label}>
+                {!soloSuperset && <div className="block-head">{block.label}</div>}
+                {block.units.map((unit) =>
+                  unit.supersetKey != null && unit.members.length > 1 ? (
+                    <SupersetGroup
+                      key={unit.supersetKey}
+                      members={unit.members}
                       weightUnit={settings.weightUnit}
                       bandLabels={bandLabels}
-                      lastSnapshot={member.lastSnapshot}
-                      previous={member.previous}
-                      history={member.history}
-                      verdict={member.verdict}
-                      isCurrent={nextExercise?.prescriptionId === member.prescription.id}
-                      expanded={expanded === member.prescription.id}
-                      onToggleExpand={() =>
-                        setExpanded(
-                          expanded === member.prescription.id ? null : member.prescription.id,
-                        )
-                      }
+                      expandedId={expanded}
+                      currentId={nextExercise?.prescriptionId ?? null}
+                      onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
+                      onFocus={focusExercise}
+                      autoAdvance={settings.autoCollapseCompleted}
                       onChange={updateResult}
                       onRest={(seconds) => rest.start(seconds)}
                     />
-                  ))
-                ),
-              )}
-            </div>
-          );
-        })}
+                  ) : (
+                    unit.members.map((member) => (
+                      <ExerciseCard
+                        key={member.prescription.id}
+                        prescription={member.prescription}
+                        result={member.result}
+                        weightUnit={settings.weightUnit}
+                        bandLabels={bandLabels}
+                        lastSnapshot={member.lastSnapshot}
+                        previous={member.previous}
+                        history={member.history}
+                        verdict={member.verdict}
+                        isCurrent={nextExercise?.prescriptionId === member.prescription.id}
+                        expanded={expanded === member.prescription.id}
+                        onToggleExpand={() =>
+                          setExpanded(
+                            expanded === member.prescription.id ? null : member.prescription.id,
+                          )
+                        }
+                        onChange={updateResult}
+                        onRest={(seconds) => rest.start(seconds)}
+                      />
+                    ))
+                  ),
+                )}
+              </div>
+            );
+          })}
 
-      {warmUpDone && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <label className="field">
-            Session notes
-            <textarea
-              value={session.sessionNotes}
-              onChange={(e) => patchSession({ sessionNotes: e.target.value })}
-              placeholder="How did the session go?"
-            />
-          </label>
-          <label className="field" style={{ marginTop: 10 }}>
-            Bodyweight ({settings.weightUnit})
-            <input
-              type="number"
-              inputMode="decimal"
-              step={0.1}
-              value={session.bodyweight ?? ''}
-              onChange={(e) =>
-                patchSession({
-                  bodyweight: e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
-            />
-          </label>
-        </div>
-      )}
+        {warmUpDone && (
+          <div className="card" style={{ marginTop: 16 }}>
+            <label className="field">
+              Session notes
+              <textarea
+                value={session.sessionNotes}
+                onChange={(e) => patchSession({ sessionNotes: e.target.value })}
+                placeholder="How did the session go?"
+              />
+            </label>
+            <label className="field" style={{ marginTop: 10 }}>
+              Bodyweight ({settings.weightUnit})
+              <input
+                type="number"
+                inputMode="decimal"
+                step={0.1}
+                value={session.bodyweight ?? ''}
+                onChange={(e) =>
+                  patchSession({
+                    bodyweight: e.target.value === '' ? null : Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+          </div>
+        )}
+      </fieldset>
 
       {/* Sticky timer + next action */}
       <div className="sticky-bar">
@@ -588,20 +680,19 @@ function buildBlocks(
 ): Block[] {
   if (!day) return [];
   const blocks: Block[] = [];
-  for (const prescription of [...day.prescriptions].sort((a, b) => a.order - b.order)) {
-    const result = session.results.find((r) => r.prescriptionId === prescription.id);
-    if (!result) continue;
-    const member = memberFor(prescription, result);
-    const key = prescription.supersetKey ?? null;
-
+  for (const group of prescriptionGroups(day)) {
+    const first = group[0]!;
+    const members = group.flatMap((prescription) => {
+      const result = session.results.find((r) => r.prescriptionId === prescription.id);
+      return result ? [memberFor(prescription, result)] : [];
+    });
+    if (!members.length) continue;
     let block = blocks[blocks.length - 1];
-    if (!block || block.label !== prescription.blockLabel) {
-      block = { label: prescription.blockLabel, units: [] };
+    if (!block || block.label !== first.blockLabel) {
+      block = { label: first.blockLabel, units: [] };
       blocks.push(block);
     }
-    const unit = block.units[block.units.length - 1];
-    if (key != null && unit && unit.supersetKey === key) unit.members.push(member);
-    else block.units.push({ supersetKey: key, members: [member] });
+    block.units.push({ supersetKey: first.supersetKey ?? null, members });
   }
   return blocks;
 }

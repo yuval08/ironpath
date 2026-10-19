@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Bumped whenever the persisted shape changes; see src/db/migrations.ts. */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /* ------------------------------------------------------------------ */
 /* Primitives                                                          */
@@ -257,6 +257,7 @@ export type WorkoutPlan = z.infer<typeof workoutPlanSchema>;
 /* ------------------------------------------------------------------ */
 
 export const setResultSchema = z.object({
+  id: z.string().optional(),
   setNumber: z.number().int(),
   reps: z.number().nullable().default(null),
   repsLeft: z.number().nullable().default(null),
@@ -316,6 +317,7 @@ export const sessionStatusSchema = z.enum(['inProgress', 'completed', 'abandoned
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
 
 export const workoutSessionSchema = entityBase.extend({
+  syncRevision: z.number().int().nonnegative().optional(),
   planId: z.string(),
   dayId: z.string(),
   weekNumber: z.number().int(),

@@ -4,6 +4,7 @@ import { migrateAll } from './migrations';
 import { DEFAULT_PROGRAM_ID, programFor } from '@/data/programs';
 import { planUpdateStatus, rebuiltPlanPatch } from '@/data/programs/planSync';
 import { fingerprint } from '@/utils/fingerprint';
+import { withSessionIdentity } from '@/utils/sessionIdentity';
 // Single source of truth lives in @/utils/stats (pure, tested there). Re-exported
 // here because spec §8 has the screens import it alongside the plan API; the
 // dependency only runs repository -> stats, so there is no cycle.
@@ -448,6 +449,7 @@ export async function removePause(pauseId: string): Promise<void> {
 
 function blankSet(setNumber: number): SetResult {
   return {
+    id: newId('set'),
     setNumber,
     reps: null,
     repsLeft: null,
@@ -494,6 +496,7 @@ export async function createSession(
   weightOverrides: Record<string, number> = {},
 ): Promise<WorkoutSession> {
   const session = base(newId('session'), {
+    syncRevision: 0,
     planId: plan.id,
     dayId: day.id,
     weekNumber: day.weekNumber,
@@ -521,8 +524,8 @@ export async function createSession(
       recommendedWeight: weightOverrides[p.exerciseId] ?? p.recommendedWeight ?? null,
       sets: [
         // Ramp sets come first, and setNumber runs unbroken across the whole array:
-        // it is the only stable identity a set has, so React keys, edit targeting
-        // and export rows all address rows by it. The working-set ordinal the user
+        // display keys and export rows still address rows by it; the separate
+        // set ID is the durable watch-command target. The working-set ordinal the user
         // sees is derived from position among the non-warm-up sets, in the UI.
         ...Array.from({ length: p.rampSets ?? 0 }, (_, i) => ({
           ...blankSet(i + 1),
@@ -557,19 +560,40 @@ export async function createSession(
   return session;
 }
 
-export async function saveSession(session: WorkoutSession): Promise<void> {
-  await db.transaction('rw', db.sessions, async () => {
+export async function saveSession(session: WorkoutSession): Promise<WorkoutSession | undefined> {
+  return db.transaction('rw', db.sessions, async () => {
     const stored = await db.sessions.get(session.id);
     // A stale installed-app/browser tab must not reopen or abandon a workout
     // another tab already completed, nor resurrect one that was deleted.
     if (!stored || (stored.status !== 'inProgress' && session.status !== stored.status)) return;
-    await db.sessions.put({ ...session, updatedAt: nowIso() });
+    if ((stored.syncRevision ?? 0) !== (session.syncRevision ?? 0)) {
+      throw new Error(
+        'This workout changed on another screen or device. Review the latest values and retry.',
+      );
+    }
+    const next = withSessionIdentity({
+      ...session,
+      syncRevision: (stored.syncRevision ?? 0) + 1,
+      elapsedSeconds: Math.max(stored.elapsedSeconds, session.elapsedSeconds),
+      updatedAt: nowIso(),
+    });
+    await db.sessions.put(next);
+    return next;
   });
 }
 
 export async function getSession(id: string): Promise<WorkoutSession | undefined> {
   const row = await db.sessions.get(id);
-  return row ? migrateAll([row])[0] : undefined;
+  return row ? withSessionIdentity(migrateAll([row])[0]!) : undefined;
+}
+
+export async function saveSessionElapsed(id: string, seconds: number): Promise<void> {
+  if (!Number.isFinite(seconds) || seconds < 0) return;
+  await db.transaction('rw', db.sessions, async () => {
+    const row = await db.sessions.get(id);
+    if (row?.status === 'inProgress' && seconds > row.elapsedSeconds)
+      await db.sessions.update(id, { elapsedSeconds: seconds });
+  });
 }
 
 export async function getSessions(): Promise<WorkoutSession[]> {
@@ -620,8 +644,11 @@ export async function completeSession(session: WorkoutSession): Promise<WorkoutS
       throw new Error('This workout was removed or abandoned.');
     }
 
-    const completed: WorkoutSession = { ...session, status: 'completed', completedAt: nowIso() };
-    await saveSession(completed);
+    const completed = (await saveSession({
+      ...session,
+      status: 'completed',
+      completedAt: nowIso(),
+    }))!;
 
     // Switching programs must not redirect an unfinished workout's cursor update.
     const plan = await getPlanById(session.planId);

@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage } from '@/db/db';
 import { ensureSeeded, syncPlansWithPrograms } from '@/db/repository';
 import { migrateAll } from '@/db/migrations';
+import { reconcileWatchInbox } from '@/watch/transport';
 import type {
   FinalAssessment,
   ImportedWeight,
@@ -55,6 +56,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         await ensureSeeded();
+        await reconcileWatchInbox();
       } catch (error) {
         // Without this the whole app would sit on "Loading your plan…" forever —
         // including Settings, so there would be no way to export a backup of data
@@ -76,6 +78,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!seeded) return;
+    const reconcile = () => {
+      if (document.visibilityState === 'visible')
+        void reconcileWatchInbox().catch((error: unknown) =>
+          console.error('[watch] could not reconcile pending commands', error),
+        );
+    };
+    const interval = window.setInterval(reconcile, 2000);
+    document.addEventListener('visibilitychange', reconcile);
+    window.addEventListener('focus', reconcile);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', reconcile);
+      window.removeEventListener('focus', reconcile);
+    };
+  }, [seeded]);
 
   const plans = useLiveQuery(
     async () =>
