@@ -63,3 +63,15 @@ Keep the app visible for repeated short rest intervals when exact timing matters
 
 Implementation follows the [official Capacitor local notifications documentation](https://capacitorjs.com/docs/apis/local-notifications).
 The APK's old HTTPS-install advice was incorrect and is fixed in 1.0.2.
+
+## Rest controls and lock screen
+
+- The rest overlay has **−15s** and **+15s**. Deducting past zero ends the rest.
+- While resting, the overlay shows what comes next: the next set of the exercise you
+  are on, or the first set of the next exercise once it is finished (supersets walk
+  A1 → A2 → A1). It includes the target reps and the load to use.
+- On the Android APK, with rest notifications enabled, an ongoing **Rest countdown**
+  notification shows on the lock screen with a live countdown and the next set. It is
+  drawn by Android, so it keeps counting while the app is suspended, and it is
+  replaced by the "Rest complete" alert, which also names the next set. Lock-screen
+  content follows Android's *Notifications on lock screen* setting.

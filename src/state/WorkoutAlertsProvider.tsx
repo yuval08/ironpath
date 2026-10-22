@@ -2,19 +2,30 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useRestTimer } from '@/hooks/useTimers';
 import type { RestTimer } from '@/hooks/useTimers';
+import { nextUpLine } from '@/utils/nextUp';
+import type { NextUp } from '@/utils/nextUp';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
 import type { ScreenWakeStatus } from '@/hooks/useScreenWakeLock';
 import {
   nativeRestNotificationsSupported,
   scheduleNativeRestAlert,
   cancelNativeRestAlert,
+  clearNativeRestLive,
   listenForNativeRestNotification,
+  showNativeRestLive,
 } from '@/utils/nativeRestNotifications';
 import { closeRestNotifications, showRestNotification } from '@/utils/restNotifications';
 import { useAppData } from './AppDataProvider';
 import { useToast } from './ToastProvider';
 
-const AlertsContext = createContext<{ rest: RestTimer; wakeStatus: ScreenWakeStatus } | null>(null);
+/** The rest timer, which also knows what comes next so alerts can say it. */
+export interface WorkoutRest extends RestTimer {
+  start: (seconds: number, next?: NextUp | null) => void;
+}
+
+const AlertsContext = createContext<{ rest: WorkoutRest; wakeStatus: ScreenWakeStatus } | null>(
+  null,
+);
 
 /** Lives above routing, so viewing History or Settings never cancels an active rest. */
 export function WorkoutAlertsProvider({ children }: { children: ReactNode }) {
@@ -22,13 +33,28 @@ export function WorkoutAlertsProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const workoutUrl = useRef('');
   const deadline = useRef<number | null>(null);
+  const next = useRef<NextUp | null>(null);
   useEffect(() => listenForNativeRestNotification(), []);
   const syncNativeAlert = () => {
     if (!nativeRestNotificationsSupported()) return;
     if (!settings?.notifyOnRestEnd || deadline.current == null || deadline.current <= Date.now()) {
       void cancelNativeRestAlert();
+      void clearNativeRestLive();
     } else {
-      void scheduleNativeRestAlert(deadline.current, workoutUrl.current).then((scheduled) => {
+      const upcoming = next.current;
+      void showNativeRestLive(
+        deadline.current,
+        upcoming && {
+          title: `Rest · ${upcoming.kind === 'set' ? 'next set' : 'next exercise'}: ${upcoming.title}`,
+          text: upcoming.detail,
+        },
+      );
+      void scheduleNativeRestAlert(
+        deadline.current,
+        workoutUrl.current,
+        undefined,
+        nextUpLine(upcoming) ?? undefined,
+      ).then((scheduled) => {
         if (!scheduled)
           toast('Could not schedule the rest alert. Check notification permissions in Settings.');
       });
@@ -66,21 +92,29 @@ export function WorkoutAlertsProvider({ children }: { children: ReactNode }) {
     vibrate: settings?.vibrateOnRestEnd ?? true,
     sound: settings?.soundOnRestEnd ?? false,
     onComplete: () => {
-      toast('Rest complete — ready for your next set.');
+      void clearNativeRestLive();
+      const upcoming = next.current;
+      toast(
+        upcoming
+          ? `Rest complete — ${upcoming.title}, ${upcoming.detail}.`
+          : 'Rest complete — ready for your next set.',
+      );
       if (
         !nativeRestNotificationsSupported() &&
         settings?.notifyOnRestEnd &&
         (document.visibilityState !== 'visible' || !document.hasFocus())
       ) {
-        void showRestNotification(workoutUrl.current);
+        void showRestNotification(workoutUrl.current, nextUpLine(next.current) ?? undefined);
       }
     },
   });
-  const rest: RestTimer = {
+  const rest: WorkoutRest = {
     ...timer,
-    start: (seconds) => {
+    start: (seconds, upcoming) => {
       if (!Number.isFinite(seconds) || seconds <= 0) return;
       deadline.current = Date.now() + seconds * 1000;
+      // Restarting from a preset keeps what was already known to come next.
+      if (upcoming !== undefined) next.current = upcoming;
       workoutUrl.current = window.location.href;
       void closeRestNotifications();
       timer.start(seconds);
@@ -88,13 +122,15 @@ export function WorkoutAlertsProvider({ children }: { children: ReactNode }) {
     },
     add: (seconds) => {
       if (!Number.isFinite(seconds) || deadline.current == null) return;
-      deadline.current += seconds * 1000;
+      deadline.current = Math.max(Date.now(), deadline.current + seconds * 1000);
       timer.add(seconds);
       syncNativeAlert();
     },
     stop: () => {
       deadline.current = null;
+      next.current = null;
       void closeRestNotifications();
+      void clearNativeRestLive();
       timer.stop();
     },
   };

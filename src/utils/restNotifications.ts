@@ -31,7 +31,7 @@ export async function requestRestNotificationPermission(): Promise<NotificationP
   return Notification.requestPermission();
 }
 
-export async function showRestNotification(url: string): Promise<boolean> {
+export async function showRestNotification(url: string, body?: string): Promise<boolean> {
   if (nativeRestNotificationsSupported()) return scheduleNativeRestTestAlert(url);
   if (!notificationsSupported() || Notification.permission !== 'granted') return false;
   try {
@@ -39,7 +39,7 @@ export async function showRestNotification(url: string): Promise<boolean> {
     const registration = await navigator.serviceWorker.getRegistration();
     if (!registration?.active || current !== generation) return false;
     await registration.showNotification('Rest complete', {
-      body: 'Ready for your next set? Tap to return to your workout.',
+      body: body ?? 'Ready for your next set? Tap to return to your workout.',
       tag: REST_TAG,
       icon: new URL(`${import.meta.env.BASE_URL}icons/icon-192.png`, location.href).href,
       data: { url },

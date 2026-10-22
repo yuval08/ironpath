@@ -38,6 +38,7 @@ export interface RestTimer {
   total: number;
   start: (seconds: number) => void;
   stop: () => void;
+  /** Negative seconds deduct time. */
   add: (seconds: number) => void;
 }
 
@@ -108,8 +109,11 @@ export function useRestTimer(
   const add = useCallback((seconds: number) => {
     if (!Number.isFinite(seconds)) return;
     notified.current = false;
-    setEndsAt((current) => (current == null ? null : current + seconds * 1000));
-    setTotal((t) => t + seconds);
+    // Deducting can end the rest early, never push the deadline into the past.
+    setEndsAt((current) =>
+      current == null ? null : Math.max(Date.now(), current + seconds * 1000),
+    );
+    setTotal((t) => Math.max(0, t + seconds));
   }, []);
 
   return { remaining, total, start, stop, add };

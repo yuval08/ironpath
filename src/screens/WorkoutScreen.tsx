@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronDown, Pause, Play, Plus, X } from 'lucide-react';
+import { ChevronDown, Minus, Pause, Play, Plus, X } from 'lucide-react';
 import { useAppData } from '@/state/AppDataProvider';
 import { useToast } from '@/state/ToastProvider';
 import { useStopwatch, REST_PRESETS } from '@/hooks/useTimers';
@@ -23,6 +23,7 @@ import {
 import { watchRecoveryActions } from '@/watch/recovery';
 import { WatchWorkoutHandoff } from '@/components/WatchWorkoutHandoff';
 import { prescriptionGroups } from '@/utils/workoutExecution';
+import { nextUp } from '@/utils/nextUp';
 import {
   completeSession,
   createSession,
@@ -413,6 +414,19 @@ export default function WorkoutScreen() {
     };
   });
   const nextExercise = session.results.find((r) => !r.completed && !r.skippedReason);
+  /** Reads the live session, so the set just logged already counts as done. */
+  const upcoming = () =>
+    sessionRef.current
+      ? nextUp(
+          day,
+          sessionRef.current,
+          (exerciseId) => previousResult(priorSessions, exerciseId),
+          settings.weightUnit,
+          settings.bandLabels,
+        )
+      : null;
+  const startRest = (seconds: number) => rest.start(seconds, upcoming());
+  const restNext = rest.remaining != null ? upcoming() : null;
   // Deliberately partial: the user renames only the bands they own, and every
   // consumer resolves a missing key through `bandName`'s default.
   const bandLabels: BandLabels = settings.bandLabels;
@@ -500,7 +514,7 @@ export default function WorkoutScreen() {
                       onFocus={focusExercise}
                       autoAdvance={settings.autoCollapseCompleted}
                       onChange={updateResult}
-                      onRest={(seconds) => rest.start(seconds)}
+                      onRest={startRest}
                     />
                   ) : (
                     unit.members.map((member) => (
@@ -522,7 +536,7 @@ export default function WorkoutScreen() {
                           )
                         }
                         onChange={updateResult}
-                        onRest={(seconds) => rest.start(seconds)}
+                        onRest={startRest}
                       />
                     ))
                   ),
@@ -607,14 +621,26 @@ export default function WorkoutScreen() {
         <div className="rest-overlay">
           <span className="muted">Rest</span>
           <div className="count">{rest.remaining}</div>
+          {restNext && (
+            <div className="rest-next">
+              <span className="muted tiny">
+                {restNext.kind === 'set' ? 'Next set' : 'Next exercise'}
+              </span>
+              <strong>{restNext.title}</strong>
+              <span className="tiny">{restNext.detail}</span>
+            </div>
+          )}
           <div className="row tight">
             {REST_PRESETS.map((p) => (
-              <button key={p} className="btn small" onClick={() => rest.start(p)}>
+              <button key={p} className="btn small" onClick={() => startRest(p)}>
                 {p}s
               </button>
             ))}
           </div>
           <div className="row tight">
+            <button className="btn small" onClick={() => rest.add(-15)}>
+              <Minus size={14} /> 15s
+            </button>
             <button className="btn small" onClick={() => rest.add(15)}>
               <Plus size={14} /> 15s
             </button>

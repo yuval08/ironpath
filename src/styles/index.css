@@ -573,6 +573,19 @@ label.field {
   color: var(--accent);
 }
 
+.rest-overlay .rest-next {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  text-align: center;
+}
+
 /* Pain scale */
 .pain-scale {
   display: grid;

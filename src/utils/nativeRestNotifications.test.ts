@@ -16,6 +16,7 @@ import {
 
 const native = vi.hoisted(() => ({ enabled: true }));
 vi.mock('@capacitor/core', () => ({
+  registerPlugin: () => ({ show: vi.fn(), clear: vi.fn() }),
   Capacitor: {
     isNativePlatform: () => native.enabled,
     isPluginAvailable: () => true,
