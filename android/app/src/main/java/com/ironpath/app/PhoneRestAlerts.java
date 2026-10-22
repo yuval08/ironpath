@@ -34,8 +34,11 @@ public final class PhoneRestAlerts implements RestEffects {
     @Override public void apply(Context context, JSONObject view) {
         JSONObject timer = view == null ? null : view.optJSONObject("timer");
         boolean running = timer != null && "running".equals(timer.optString("state")) && timer.optLong("remainingMs") > 0;
-        if (running) showCountdown(context, view.optLong("measuredAtWall", System.currentTimeMillis()) + timer.optLong("remainingMs"), timer.optJSONObject("next"));
-        else NotificationManagerCompat.from(context).cancel(LIVE_ID);
+        if (running) {
+            // A "Rest complete" left over from the previous rest is stale once a new one runs.
+            NotificationManagerCompat.from(context).cancel(ALERT_ID);
+            showCountdown(context, view.optLong("measuredAtWall", System.currentTimeMillis()) + timer.optLong("remainingMs"), timer.optJSONObject("next"));
+        } else NotificationManagerCompat.from(context).cancel(LIVE_ID);
         JSONObject alert = timer == null ? null : timer.optJSONObject("alert");
         if (running && alert != null && "scheduled".equals(alert.optString("phoneBackup"))) scheduleBackup(context, timer);
         else cancelBackup(context);
@@ -52,7 +55,7 @@ public final class PhoneRestAlerts implements RestEffects {
         NotificationManagerCompat manager = NotificationManagerCompat.from(context);
         if (left <= 0 || !manager.areNotificationsEnabled()) { manager.cancel(LIVE_ID); return; }
         ensureLiveChannel(context);
-        String title = next == null || next.optString("title").isEmpty() ? "Resting" : next.optString("title");
+        String title = next == null || next.optString("title").isEmpty() ? "Resting" : "Rest · next: " + next.optString("title");
         String text = next == null || next.optString("text").isEmpty() ? "Tap to return to your workout." : next.optString("text");
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, LIVE_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_rest).setColor(COLOR)
