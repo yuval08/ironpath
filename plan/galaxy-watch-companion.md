@@ -1,7 +1,7 @@
 # Ironpath Galaxy Watch companion specification
 
-Status: First working sideloaded version delivered; basic user flow confirmed; physical qualification remains open. See [phase tracker](galaxy-watch-phases.md) and [user guide](galaxy-watch-user-guide.md).
-Date: 2026-10-19
+Status: Shared-mode pair (phone 1.0.6 / watch 0.5.0, protocol v2) implemented and verified on emulators; final physical-device smoke workout pending. See [phase tracker](galaxy-watch-phases.md), [user guide](galaxy-watch-user-guide.md) and [sync v2 design](galaxy-watch-sync-v2-design.md).
+Date: 2026-10-19 (updated 2026-10-22)
 Target device: Samsung Galaxy Watch7, paired with the existing Android phone app
 Distribution: Direct APK installation only; no app store dependency
 
@@ -34,18 +34,69 @@ does not promise a full workout started independently with the phone left at hom
 
 ## Delivered version and remaining acceptance
 
-Phone **1.0.5 (code 6)** and watch **0.4.0 (code 4)** are the current compatible
-pair. The user confirmed installation, real workout handoff, and returning to
-phone control/sync before finishing. This closes the initial development work;
-it does not establish the entire physical acceptance matrix below.
+Phone **1.0.6 (code 7)** and watch **0.5.0 (code 5)** are the current compatible
+pair (commits `94164b4` and `efcf001`, artifacts in `artifacts/watch-phase6/`). They speak sync
+protocol v2 and still accept v1. Both screens stay usable during the same
+workout: the routine **Take control on phone** handoff is gone, and **Send
+workout to watch** remains only for choosing which workout the watch shows.
 
-The scope below records the target specification. Current watch progress shows
-completed/total working sets and pending sync; the workout elapsed clock remains
-on the phone. The exercise picker provides navigation rather than a full
-completion dashboard. Conflicting values are retained for review and manual
-recovery; there is no automatic overwrite of phone history. Independent workout
-start/finish on the watch and a full workout without the paired phone remain
-outside this version.
+The pair passed the automated suite, native tests, lint and signing checks, and
+was exercised on emulators. The final smoke workout on the physical Galaxy Watch7
+and phone (both screens, reconnect, finish, several screen-off rests) is still
+pending, so the physical acceptance matrix below is not yet established.
+Extended battery/Doze monitoring is a post-release operational follow-up.
+
+The previous pair, phone **1.0.5 (code 6)** and watch **0.4.0 (code 4)**, was the
+first working sideloaded version. The user confirmed its installation, real
+workout handoff, and returning to phone control/sync before finishing.
+
+The scope below records the original target specification; where it describes
+exclusive control ownership, shared mode (next section) now replaces it. Watch
+progress shows completed/total working sets, elapsed time and sync state.
+Conflicting values are never silently overwritten: they go to an explicit review
+on either device. Independent workout start/finish on the watch and a full
+workout without the paired phone remain outside this version.
+
+## Protocol v2 and shared mode
+
+Full contract: [sync v2 design](galaxy-watch-sync-v2-design.md). Implementation
+notes beyond that design: `android/wear-link/API_NOTES.md`.
+
+- **Capability negotiation.** Both apps exchange a `hello` with their versions and
+  supported protocols. Shared mode starts only when both sides support v2. Mixed
+  versions keep the old compatible (v1) workflow, including its control handoff,
+  and both screens show **Update needed**. Existing v1 queues keep draining without
+  resetting device identity or sequence history.
+- **Shared mode replaces control ownership.** Phone and watch edit the same active
+  session at once. Every edit is a mutation carrying the touched fields' expected
+  values and the new values. The phone applies watch mutations and its own edits
+  with the same per-field three-way merge: untouched or different fields merge,
+  identical repeats are no-ops, and the same field changed differently on both
+  sides becomes a **review**. Open editors rebase untouched fields when an update
+  arrives.
+- **Reviews.** A review lists every field of the change, marks which ones
+  conflict, and shows the phone value next to the requested value. It can be
+  resolved on either device. Applying the other value is a new conditional
+  mutation, so newer work is never silently overwritten. A set with an open review
+  is locked; other sets stay usable.
+- **Sync states.** Synced, Saved on watch (queued, not yet received by the phone),
+  Waiting for phone (received natively, not yet committed to history), Needs
+  review, and Update needed.
+- **Finish barrier.** Finishing on the phone freezes mutations on both devices,
+  imports through the watch's acknowledged sequence checkpoint, requires open
+  reviews to be resolved, then completes once. Cancel or failure unfreezes.
+  Switching the watch to another workout runs the same freeze and drain. Closed or
+  restored sessions cannot be revived by delayed packets.
+- **Shared rest timer.** A native phone rest coordinator (wear-link
+  `RestCoordinator`, with `PhoneRestAlerts` for Android effects) owns one timer
+  with an id and revision on a separate rest stream, so it works while the phone
+  WebView is suspended. Either device can start, −15/+15 or skip it; only durations
+  cross devices, never raw clock values. The wrist alert is preferred; the phone
+  keeps a backup alert until the watch confirms it armed the current revision. A
+  duplicate alert is possible during an uncertain disconnect and is accepted.
+- **Diagnostics.** Each device keeps its latest 500 events for up to 14 days,
+  separate from pending work. The phone pulls watch events on reconnect and offers
+  view and export in Settings. Nothing is uploaded.
 
 ## Release-one scope
 
@@ -111,6 +162,8 @@ outside this version.
 - While watch control is active, suppress duplicate phone rest alerts. On return
   to phone control, explicitly transfer the current timer and cancel the old
   owner's alert. Connectivity changes alone do not change timer ownership.
+  *Superseded in shared mode:* one shared timer, wrist alert preferred, phone
+  backup until the watch confirms it is armed (see Protocol v2 and shared mode).
 
 ## Architecture
 
@@ -183,6 +236,8 @@ Define a versioned protocol with these payloads:
   checkpoint, and imports through that checkpoint before reporting success.
   Rest pauses during transfer; the phone offers an explicit resume of its saved
   remainder after the old wrist alert has been cancelled.
+  *This applies only to the legacy v1 workflow (mixed versions). Shared mode has
+  no ownership transfer; see Protocol v2 and shared mode.*
 - A global revision mismatch alone does not discard a command. Apply it if its
   targeted fields and preconditions are unchanged. Conflicting changes to the
   same set require review on the phone; no last-writer-wins timestamp policy.

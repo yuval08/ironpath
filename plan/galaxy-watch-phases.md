@@ -1,26 +1,34 @@
 # Galaxy Watch implementation phases
 
-Updated: 2026-10-19
+Updated: 2026-10-22
 Specification: [Galaxy Watch companion](galaxy-watch-companion.md)
 
 Each phase has a delivery gate. Desktop checks do not substitute for Watch7 tests.
 
 ## Wrap-up status
 
-The first working version is delivered as **phone 1.0.5 (code 6)** and **watch
-0.4.0 (code 4)**. Development for the initial usable version is wrapped. The user
-confirmed the real workout handoff and, after the phase-four update, the **Take
-control on phone / sync watch** flow before finishing. These are user-reported
-checks, in addition to the recorded ADB installation and automated validation.
+The current pair is **phone 1.0.6 (code 7)** and **watch 0.5.0 (code 5)**, from
+the [sync completion plan](galaxy-watch-sync-completion.md): shared logging from
+either screen with sync protocol v2, a shared rest timer, diagnostics and the
+redesigned watch UI. See [Sync completion](#sync-completion-phone-106--watch-050)
+below. It passed the automated suite, native tests, lint and signing checks and
+was exercised on emulators only. **The final physical smoke workout on the Galaxy
+Watch7 and phone (both screens, reconnect, finish, several screen-off rests) is
+still pending.** Artifacts and checksums are under `artifacts/watch-phase6/`.
 
-The current pair passed 464 TypeScript tests and 32 native tests, typechecking,
-ESLint, Android lint, APK builds, and certificate verification. Artifacts and
-checksums were delivered under `artifacts/watch-phase4/`; build outputs and
-signing keys stay outside Git. See the [user guide](galaxy-watch-user-guide.md)
-for current installation/use instructions. Phase sections below retain historical
+The first working version was **phone 1.0.5 (code 6)** and **watch 0.4.0 (code
+4)**. The user confirmed its real workout handoff and, after the phase-four
+update, the **Take control on phone / sync watch** flow before finishing. These
+are user-reported checks, in addition to the recorded ADB installation and
+automated validation. That pair passed 464 TypeScript tests and 32 native tests,
+typechecking, ESLint, Android lint, APK builds, and certificate verification;
+its artifacts are under `artifacts/watch-phase4/`. Build outputs and signing keys
+stay outside Git. See the [user guide](galaxy-watch-user-guide.md) for current
+installation/use instructions. Phase sections below retain historical
 implementation milestones and their test counts.
 
-Remaining physical qualification:
+Remaining physical qualification (none of these has been run on the physical
+devices with the 1.0.6 / 0.5.0 pair yet):
 
 - Repeated rest alerts/vibration with the screen off, including ambient mode,
   relevant permissions, DND, and power saving.
@@ -30,9 +38,11 @@ Remaining physical qualification:
   queued actions on the actual devices.
 - A normal workout's battery use and unexpected background-process termination.
 
-These checks are follow-up qualification, not completed tests. Current watch
-progress has working-set counts/pending sync; elapsed workout time remains on the
-phone. Independent watch workout start/finish remains outside this version.
+These checks are follow-up qualification, not completed tests. The final smoke
+workout above is the release gate still open for 1.0.6 / 0.5.0; extended battery
+and Doze monitoring is a post-release operational follow-up, measured through the
+new diagnostics. Independent watch workout start/finish remains outside this
+version.
 
 | Phase | Deliverable | Current state |
 | --- | --- | --- |
@@ -42,6 +52,7 @@ phone. Independent watch workout start/finish remains outside this version.
 | 3 — Watch workout controls | Snapshot-driven screens, actual-value editing, complete/undo, execution order, local timers | Implemented; automated checks pass; installed on Watch7; physical qualification in progress |
 | 4 — Reconnection and phone integration | Ownership, conflict review, backup epochs, finish safeguards, alert handoff | Implemented; APK pair delivered; user confirmed return-to-phone sync/control; broader physical qualification pending |
 | 5 — Device qualification and delivery | Failure testing, battery assessment, signed APK pair and user documentation | APK delivery and user documentation complete; broader device qualification remains open |
+| Sync completion | Shared editing (protocol v2), shared rest timer, finish barrier, diagnostics, watch UI redesign | Implemented as phone 1.0.6 / watch 0.5.0; automated checks pass; emulator-verified; physical smoke workout pending |
 
 ## Phase 0 — Feasibility and signing
 
@@ -407,3 +418,73 @@ Original qualification requirements:
 
 Gate: all acceptance checks pass or a limitation is explicitly accepted and
 documented. App store publication is not required at any phase.
+
+## Sync completion (phone 1.0.6 / watch 0.5.0)
+
+Plan: [sync completion](galaxy-watch-sync-completion.md). Design:
+[sync v2](galaxy-watch-sync-v2-design.md). Watch UI:
+[redesign](galaxy-watch-ui.md). Implemented in commits `94164b4` and `efcf001` as phone
+**1.0.6 (code 7)** and watch **0.5.0 (code 5)**:
+
+- **Protocol v2 and shared mode.** A `hello` exchange negotiates capabilities.
+  When both sides support v2, phone and watch edit the same session without a
+  control handoff; **Send workout to watch** remains for choosing the workout.
+  Edits are sparse mutations merged per field (three-way). Identical repeats are
+  no-ops; the same field changed differently on both sides becomes a review.
+  Open editors rebase untouched fields. v1 queues keep draining.
+- **Conflict review.** Shows the phone value and the requested value for every
+  field of the change, marking which fields conflict. It can be resolved on either
+  device; applying the other value is a new conditional mutation. Only the affected
+  set is locked while the review is open.
+- **Sync states.** Synced, Saved on watch, Waiting for phone, Needs review, and
+  Update needed, on both devices.
+- **Finish barrier.** Finishing freezes both screens, drains watch actions through
+  the acknowledged checkpoint, gates on open reviews, then completes once; cancel or
+  failure unfreezes. Switching the watch to another workout runs the same freeze
+  and drain.
+- **Shared rest timer.** A native phone rest coordinator handles start, −15/+15 and
+  skip from either device, also while the WebView is suspended. `PhoneRestAlerts`
+  replaces `RestLivePlugin` for the lock-screen countdown and adds a phone backup
+  alert that stays scheduled until the watch confirms it armed the current
+  revision. A duplicate alert during an uncertain disconnect is accepted.
+- **Diagnostics.** 500 events / 14 days per device in a store separate from pending
+  work; watch events are pulled on reconnect; phone Settings shows and exports them.
+- **Watch UI.** Rewritten in Wear Material 3: pager (Now / Exercises / Progress),
+  one-tap **Done set**, rotary value pickers, rest arc with −15 / +15 / Skip and
+  next-up preview, TimeText sync indicator, conflict review, ambient mode and an
+  ongoing activity. Test and permission controls moved to Settings.
+- **Mixed versions** keep the old compatible workflow (including **Take control on
+  phone**) and show **Update needed**.
+
+```mermaid
+graph LR
+    W[Watch action] -->|mutation v2| P[Phone native inbox]
+    PH[Phone edit] --> M{Per-field merge}
+    P -->|app open| M
+    M -->|merged / no-op| H[(IndexedDB history)]
+    M -->|same field differs| R[Needs review]
+    R -->|keep phone / apply other value| H
+    H -->|snapshot| W
+```
+
+Validation on 2026-10-22: **568 vitest tests in 39 files**, **102 wear-link JUnit
+tests** and **33 watch unit tests** passed. Typecheck, ESLint, and Android lint for
+app, wear and wear-link are clean. Both APKs were built and verified with the same
+signing certificate `38255a75…1843`. `artifacts/watch-phase6/` holds
+`ironpath-phone.apk`, `ironpath-watch.apk`, `SHA256SUMS` and `build.json`
+(revision `efcf001903363a507e1bcdfd0e9c6f7deac438eb`, not dirty, debug variant,
+protocols 1 and 2):
+
+```text
+db1169b3b88274a6fa2333c6247cce9efe142f0ecc508e927e59773657097d87  ironpath-phone.apk
+e99797306212ff865b2195beec614ece6f441ede2ec77f3a29469cf714e0fe16  ironpath-watch.apk
+```
+
+Device status: verified on emulators only. Still pending on the physical Galaxy
+Watch7 and phone: one smoke workout covering both screens, reconnect, finish and
+several screen-off rests (design §8), then a diagnostics export to check
+`rest.callback.delayMs`. Extended battery/Doze monitoring is a post-release
+operational follow-up.
+
+Gate: the physical smoke workout passes, or any failure is fixed or explicitly
+accepted and documented.

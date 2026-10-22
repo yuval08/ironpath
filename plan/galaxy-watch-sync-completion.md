@@ -1,7 +1,17 @@
 # Finish phone/watch sync from A to Z
 
 Date: 2026-10-22
-Status: Planned; implementation and final-device acceptance remain pending.
+Status: Implemented; final physical-device smoke workout pending.
+
+> **Delivered** in commits `94164b4` and `efcf001` as phone **1.0.6 (code 7)** and watch **0.5.0 (code 5)**, protocol v2
+> (v1 still accepted for mixed versions). Phases B–G are implemented per the
+> [Sync v2 design](galaxy-watch-sync-v2-design.md), with the small deviations recorded in
+> `android/wear-link/API_NOTES.md`; the APK pair, `SHA256SUMS` and `build.json` are in
+> `artifacts/watch-phase6/`. Automated checks pass (568 vitest tests in 39 files, 102 wear-link JUnit tests,
+> 33 watch unit tests, typecheck, ESLint, Android lint for app/wear/wear-link, matching signing certificate).
+> Behaviour was verified on emulators only. The final smoke workout on the physical Galaxy Watch7 and phone
+> (both screens, reconnect, finish, several screen-off rests) is still pending; extended battery/Doze
+> monitoring is a post-release operational follow-up. See the [phase tracker](galaxy-watch-phases.md).
 
 ## Summary
 

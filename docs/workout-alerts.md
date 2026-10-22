@@ -47,7 +47,9 @@ API. Enable the rest-notification switch and allow Android notifications. Tap
 **Test rest notification** to schedule an alert three seconds later.
 
 Android schedules the alarm as soon as rest starts; it can deliver even when the
-WebView is suspended. Starting another rest replaces the alarm, adding time updates
+WebView is suspended. From 1.0.6 the rest alarm and lock-screen countdown come
+from the native rest coordinator (see [below](#android-apk-106-native-rest-coordinator));
+the behaviour described here is otherwise unchanged. Starting another rest replaces the alarm, adding time updates
 its deadline, and stopping rest or turning the notification setting off cancels it.
 Native alerts may also appear while the app is visible. Tapping the alert opens
 the workout. A scheduled alert can survive closing the app, although the onscreen
@@ -66,12 +68,57 @@ The APK's old HTTPS-install advice was incorrect and is fixed in 1.0.2.
 
 ## Rest controls and lock screen
 
-- The rest overlay has **−15s** and **+15s**. Deducting past zero ends the rest.
+- The rest overlay has **−15s** and **+15s**. Deducting to zero ends the rest and
+  alerts once. **+15s** on a rest that has just run out restarts it with 15 seconds.
 - While resting, the overlay shows what comes next: the next set of the exercise you
   are on, or the first set of the next exercise once it is finished (supersets walk
   A1 → A2 → A1). It includes the target reps and the load to use.
-- On the Android APK, with rest notifications enabled, an ongoing **Rest countdown**
-  notification shows on the lock screen with a live countdown and the next set. It is
-  drawn by Android, so it keeps counting while the app is suspended, and it is
-  replaced by the "Rest complete" alert, which also names the next set. Lock-screen
-  content follows Android's *Notifications on lock screen* setting.
+
+### Android APK 1.0.6+: native rest coordinator
+
+On Android the rest timer is owned by a native **rest coordinator** on the phone
+rather than by the WebView. Starting, adjusting and skipping a rest are stored
+natively, so they keep working while the app is suspended. With the Galaxy Watch
+companion (watch 0.5.0) the same timer is shared: a rest started, extended,
+shortened or skipped on either device shows on both.
+
+- **Lock-screen countdown.** `PhoneRestAlerts`, driven by the coordinator, posts an
+  ongoing **Rest countdown** notification with a live countdown and the next set
+  whenever a rest is running (Android notifications must be allowed for Ironpath).
+  It is drawn by Android, so it keeps counting while the app is suspended, and it is
+  re-posted on every change (+15, −15, skip, a rest started on the watch). It
+  replaces the former `RestLivePlugin`. Lock-screen content follows Android's
+  *Notifications on lock screen* setting.
+- **"Rest complete" alert.** The coordinator schedules it with Android's alarm
+  service (exact when **Alarms & reminders** access is granted, otherwise inexact)
+  on the existing rest-notification channel, and it names the next set. It needs the
+  **Notify me when rest ends outside the app** switch.
+
+**Alert destination with a watch.** When the watch shares the workout, the wrist
+alert is preferred and the phone alert becomes a **backup**:
+
+```mermaid
+graph TD
+    S[Rest starts or changes: new revision] --> B[Phone backup alert scheduled]
+    B --> Q{Watch confirms it armed this revision?}
+    Q -->|yes| W[Phone backup cancelled; wrist alert only. Countdown stays, silent]
+    Q -->|no / disconnected / watch alerts off| P[Phone backup stays scheduled]
+    W -->|+15 / −15 on either device| S
+    P --> E[Deadline: phone alert fires; wrist may also fire]
+```
+
+- Every change to the rest invalidates the watch's confirmation, so the backup is
+  scheduled again until the watch re-arms the new deadline.
+- If the confirmation never arrives (for example the watch disconnects during the
+  rest), both devices can alert. This duplicate is accepted rather than risking no
+  alert at all.
+- The phone overlay shows the destination: **Alert on your watch**, **Alert on
+  watch and phone** (backup still scheduled), or **No alert** (phone notifications
+  off and the watch not armed). With the destination on the watch, the phone skips
+  its in-app beep and vibration.
+- Rest alert scheduling, delivery delay and suppression are recorded in watch sync
+  diagnostics (**Settings → Watch sync diagnostics → Export diagnostics**).
+
+iOS, the browser/PWA, and Android builds without the native coordinator keep the
+JavaScript timer with local notifications described above. **Test rest
+notification** still uses local notifications on all platforms.

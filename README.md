@@ -72,24 +72,28 @@ and allow installation from that file manager/browser when Android asks.
 This build is for direct installation; Play Store distribution needs release signing.
 Keep the same signing key for future updates to preserve the installed app's data.
 
-The native Galaxy Watch7 companion is available as the first working sideloaded
-version: **phone 1.0.5 + watch 0.4.0**. It supports rep/weight editing, set
-completion/undo, local rest countdowns, verified return to phone control, and
-rejected-action recovery. Both APKs use the same application ID and signing key;
-update them together without uninstalling either app.
+The native Galaxy Watch7 companion is a sideloaded pair: **phone 1.0.6 + watch
+0.5.0** (sync protocol v2). Both screens work during the same workout: log sets,
+edit values, undo, and run one shared rest timer (−15 / +15 / Skip) from either
+device. Independent changes merge per field; the same field changed on both screens
+goes to a conflict review instead of being overwritten. Both APKs use the same
+application ID and signing key; update them together without uninstalling either
+app or clearing data.
 
-Start a workout and finish the warm-up on the phone, then choose **Send workout
-to watch**. Use the watch to log sets and rest. Before editing or finishing on the
-phone, choose **Take control on phone / sync watch** and wait for **Phone has
-control**. The user confirmed this basic handoff and return-to-phone flow works.
-The phone must reopen to commit queued watch actions into workout history.
+Start a workout and finish the warm-up on the phone, then choose **Send workout to
+watch** to pick the workout the watch shows. After that, log from whichever screen is
+at hand; **Take control on phone** is gone from normal use and only returns when the
+two apps' versions don't match (shown as **Update needed**). Finish on the phone: it
+briefly freezes both screens, imports the watch's saved sets, and asks you to resolve
+any review first. The phone must be open to commit watch actions into workout
+history; the watch shows **Saved on watch** or **Waiting for phone** until then.
 
 See the [watch user guide](plan/galaxy-watch-user-guide.md) for installation,
-normal use, and recovery. Build both APKs with `npm run android:pair-apks`; the
-[phase tracker](plan/galaxy-watch-phases.md) records signing checks and validation.
-Repeated screen-off alerts, disconnected/locked-phone logging, restart/conflict
-recovery, and workout-length battery use remain physical qualification checks.
-No app store is required.
+normal use, sync states, and diagnostics export. Build both APKs with
+`npm run android:pair-apks`; the [phase tracker](plan/galaxy-watch-phases.md) records
+signing checks and validation. This pair is verified by automated tests and on
+emulators; a smoke workout on the physical watch and phone (both screens, reconnect,
+finish, screen-off rests) is still pending. No app store is required.
 
 Excel exports and JSON backups open Android's share sheet so you can save them using
 an installed file app or send them to another app. Imports use the system file picker.
@@ -97,7 +101,7 @@ Browser/PWA data is separate from Android app data: export a JSON backup from th
 existing app, then restore it in Android Settings to transfer your history.
 APK updates require rebuilding and installing a new APK. Browser service-worker
 updates are disabled in the Android build so old cached code cannot override an update.
-Android rest alerts use native local notifications scheduled when rest starts.
+Android rest alerts are scheduled natively when rest starts; see [workout alerts](docs/workout-alerts.md).
 Enable rest notifications in Settings and grant Android's notification permission.
 Use **Allow precise rest alerts** for the Alarms & reminders permission. OS power
 saving and Doze can delay alerts; OS notification settings control sound/vibration.
