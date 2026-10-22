@@ -164,4 +164,112 @@ describe('workout completion failure recovery', () => {
       await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/progress'));
     });
   });
+
+  it('keeps a watch import and a later phone set edit instead of refusing a stale save', async () => {
+    const owner = makePlan();
+    const prescription = owner.weeks[0]!.days[0]!.prescriptions[0]!;
+    const stored = (await db.sessions.get('session_test'))!;
+    const session = {
+      ...stored,
+      syncRevision: 0,
+      warmUpCompletedAt: new Date().toISOString(),
+      results: [
+        makeResult(
+          prescription.exerciseId,
+          [
+            { id: 'set-1', completed: false, reps: null },
+            { id: 'set-2', completed: false, reps: null },
+          ],
+          { prescriptionId: prescription.id, completed: false },
+        ),
+      ],
+    };
+    await db.sessions.put(session);
+    mocks.data = { plan: owner, settings: makeSettings(), sessions: [session] };
+    const ui = await render(false);
+    // A watch import lands while the screen is open (v1 refused the next phone save).
+    await act(async () => {
+      await db.sessions.update('session_test', {
+        syncRevision: 1,
+        results: [
+          {
+            ...session.results[0]!,
+            sets: session.results[0]!.sets.map((set) =>
+              set.id === 'set-1' ? { ...set, completed: true, reps: 9 } : set,
+            ),
+          },
+        ],
+      });
+    });
+    // Renders flush only when act() ends, so poll outside of it.
+    const imported = '[aria-label="Mark set 1 of 2 incomplete"]';
+    for (let i = 0; i < 20 && !ui.host.querySelector(imported); i++)
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+    expect(ui.host.querySelector(imported)).not.toBeNull();
+    await act(async () =>
+      ui.host.querySelector<HTMLButtonElement>('[aria-label="Mark set 2 of 2 complete"]')!.click(),
+    );
+    await act(async () => {
+      await vi.waitFor(async () => {
+        const sets = (await db.sessions.get('session_test'))!.results[0]!.sets;
+        expect(sets.map((set) => set.completed)).toEqual([true, true]);
+        expect(sets[0]!.reps).toBe(9);
+      });
+    });
+    expect(mocks.toast).not.toHaveBeenCalled();
+  });
+
+  it('skips the rest a set started when that set is un-ticked, but not a later set’s rest', async () => {
+    const owner = makePlan();
+    const prescription = { ...owner.weeks[0]!.days[0]!.prescriptions[0]!, restSeconds: 60 };
+    owner.weeks[0]!.days[0]!.prescriptions[0] = prescription;
+    const stored = (await db.sessions.get('session_test'))!;
+    const session = {
+      ...stored,
+      syncRevision: 0,
+      warmUpCompletedAt: new Date().toISOString(),
+      results: [
+        makeResult(
+          prescription.exerciseId,
+          [
+            { id: 'set-1', completed: false, reps: null },
+            { id: 'set-2', completed: false, reps: null },
+          ],
+          { prescriptionId: prescription.id, completed: false },
+        ),
+      ],
+    };
+    await db.sessions.put(session);
+    await db.plans.put(owner);
+    // Keep the card open once both sets are done.
+    mocks.data = {
+      plan: owner,
+      settings: makeSettings({ autoCollapseCompleted: false }),
+      sessions: [session],
+    };
+    const ui = await render(false);
+    const press = async (label: string) => {
+      for (let i = 0; i < 20 && !ui.host.querySelector(`[aria-label="${label}"]`); i++)
+        await act(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+      await act(async () =>
+        ui.host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click(),
+      );
+    };
+    const resting = () => ui.host.querySelector('.rest-overlay') != null;
+    await press('Mark set 1 of 2 complete');
+    expect(resting()).toBe(true);
+    await press('Mark set 1 of 2 incomplete');
+    expect(resting()).toBe(false);
+    // Set 1 again, then set 2 restarts the rest: un-ticking set 1 leaves set 2's rest.
+    await press('Mark set 1 of 2 complete');
+    await press('Mark set 2 of 2 complete');
+    expect(resting()).toBe(true);
+    await press('Mark set 1 of 2 incomplete');
+    expect(resting()).toBe(true);
+    // A preset rest has no source set and survives un-ticking.
+    const preset = [...ui.host.querySelectorAll('button')].find((b) => b.textContent === '45s')!;
+    await act(async () => preset.click());
+    await press('Mark set 2 of 2 incomplete');
+    expect(resting()).toBe(true);
+  });
 });

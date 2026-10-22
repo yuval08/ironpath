@@ -5,6 +5,9 @@ import { DEFAULT_PROGRAM_ID, programFor } from '@/data/programs';
 import { planUpdateStatus, rebuiltPlanPatch } from '@/data/programs/planSync';
 import { fingerprint } from '@/utils/fingerprint';
 import { withSessionIdentity } from '@/utils/sessionIdentity';
+import { applySessionPatch } from '@/watch/mutations';
+import type { SessionPatch } from '@/watch/mutations';
+import { newReview, putReview, reviewFields } from '@/watch/reviews';
 // Single source of truth lives in @/utils/stats (pure, tested there). Re-exported
 // here because spec §8 has the screens import it alongside the plan API; the
 // dependency only runs repository -> stats, so there is no cycle.
@@ -579,6 +582,66 @@ export async function saveSession(session: WorkoutSession): Promise<WorkoutSessi
     });
     await db.sessions.put(next);
     return next;
+  });
+}
+
+/**
+ * Commits an active-workout edit as a field-level patch (design §2.3), so a watch
+ * import that bumped `syncRevision` in between no longer discards the phone edit.
+ * Conflicting set fields are kept as a phone-origin review; nothing is overwritten.
+ */
+export async function commitSessionPatch(
+  sessionId: string,
+  patch: SessionPatch,
+): Promise<{
+  state: 'committed' | 'conflict' | 'closed';
+  session?: WorkoutSession;
+  reviewId?: string;
+}> {
+  return db.transaction('rw', db.sessions, db.meta, async () => {
+    const raw = await db.sessions.get(sessionId);
+    if (!raw || raw.status !== 'inProgress') return { state: 'closed' as const };
+    const current = withSessionIdentity(migrateAll([raw])[0]!);
+    const applied = applySessionPatch(current, patch);
+    if (applied.state === 'conflict') {
+      let reviewId: string | undefined;
+      for (const conflict of applied.conflicts) {
+        if (conflict.kind !== 'set' || !conflict.fields.length) continue;
+        const exercise = current.results.find((r) => r.prescriptionId === conflict.prescriptionId)!;
+        const set = exercise.sets.find((row) => row.id === conflict.setId)!;
+        const row = patch.sets.find((item) => item.setId === conflict.setId)!;
+        const id = reviewId ? crypto.randomUUID() : patch.opId;
+        reviewId ??= id;
+        await putReview(
+          newReview({
+            id,
+            origin: 'phone',
+            sessionId,
+            setId: set.id!,
+            prescriptionId: exercise.prescriptionId,
+            exerciseId: exercise.substitutionExerciseId ?? exercise.exerciseId,
+            code: 'fieldConflict',
+            reason: 'This set changed on the watch while you were editing it on the phone.',
+            fields: reviewFields(set as Record<string, unknown>, row.changes, conflict.fields),
+            expected: row.expected,
+            requested: row.changes,
+          }),
+        );
+      }
+      return { state: 'conflict' as const, session: current, reviewId };
+    }
+    if (!applied.changed) {
+      if (applied.session.elapsedSeconds > current.elapsedSeconds)
+        await db.sessions.update(sessionId, { elapsedSeconds: applied.session.elapsedSeconds });
+      return { state: 'committed' as const, session: applied.session };
+    }
+    const next = withSessionIdentity({
+      ...applied.session,
+      syncRevision: (current.syncRevision ?? 0) + 1,
+      updatedAt: nowIso(),
+    });
+    await db.sessions.put(next);
+    return { state: 'committed' as const, session: next };
   });
 }
 

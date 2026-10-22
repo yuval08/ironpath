@@ -7,7 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(WatchLinkPlugin.class);
-        registerPlugin(RestLivePlugin.class);
+        registerPlugin(RestCoordinatorPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -4,25 +4,26 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { makeSettings } from '@/test/factories';
 import { WorkoutAlertsProvider, useWorkoutAlerts } from './WorkoutAlertsProvider';
 import { WorkoutPreferences } from '@/components/WorkoutPreferences';
-import {
-  cancelNativeRestAlert,
-  clearNativeRestLive,
-  scheduleNativeRestAlert,
-  showNativeRestLive,
-} from '@/utils/nativeRestNotifications';
+import { cancelNativeRestAlert, scheduleNativeRestAlert } from '@/utils/nativeRestNotifications';
 import { showRestNotification } from '@/utils/restNotifications';
 
 const mocks = vi.hoisted(() => ({ data: {} as unknown, toast: vi.fn() }));
 vi.mock('./AppDataProvider', () => ({ useAppData: () => mocks.data }));
 vi.mock('./ToastProvider', () => ({ useToast: () => ({ toast: mocks.toast }) }));
-vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true } }));
+// Native without the RestCoordinator plugin (iOS, or an older Android build).
+vi.mock('@capacitor/core', () => ({
+  Capacitor: {
+    isNativePlatform: () => true,
+    getPlatform: () => 'ios',
+    isPluginAvailable: () => false,
+  },
+  registerPlugin: () => ({}),
+}));
 vi.mock('@/utils/nativeRestNotifications', () => ({
   nativeRestNotificationsSupported: () => true,
   scheduleNativeRestAlert: vi.fn().mockResolvedValue(true),
   cancelNativeRestAlert: vi.fn().mockResolvedValue(true),
   listenForNativeRestNotification: () => () => {},
-  showNativeRestLive: vi.fn().mockResolvedValue(undefined),
-  clearNativeRestLive: vi.fn().mockResolvedValue(undefined),
   exactRestAlarmsAllowed: vi.fn().mockResolvedValue(false),
 }));
 vi.mock('@/utils/restNotifications', () => ({
@@ -79,6 +80,7 @@ it('schedules on start, reschedules when time is added, and cancels on stop or o
     undefined,
     undefined,
   );
+  vi.mocked(cancelNativeRestAlert).mockClear();
   await act(async () => rest.stop());
   expect(cancelNativeRestAlert).toHaveBeenCalled();
   await act(async () => rest.start(30));
@@ -103,14 +105,10 @@ it('never emits a second notification on JS completion and supports adding time 
   );
 });
 
-it('shows the next set on the lock-screen countdown and alert, and deducts time', async () => {
+it('shows the next set in the alert, and deducts time', async () => {
   await draw();
   const next = { kind: 'set' as const, title: 'Bench press', detail: 'Set 2 of 3 · 8-12 reps' };
   await act(async () => rest.start(60, next));
-  expect(showNativeRestLive).toHaveBeenLastCalledWith(Date.now() + 60_000, {
-    title: 'Rest · next set: Bench press',
-    text: 'Set 2 of 3 · 8-12 reps',
-  });
   expect(scheduleNativeRestAlert).toHaveBeenLastCalledWith(
     Date.now() + 60_000,
     location.href,
@@ -118,11 +116,16 @@ it('shows the next set on the lock-screen countdown and alert, and deducts time'
     'Next set: Bench press · Set 2 of 3 · 8-12 reps',
   );
   await act(async () => rest.add(-15));
-  expect(showNativeRestLive).toHaveBeenLastCalledWith(Date.now() + 45_000, expect.anything());
+  expect(scheduleNativeRestAlert).toHaveBeenLastCalledWith(
+    Date.now() + 45_000,
+    location.href,
+    undefined,
+    'Next set: Bench press · Set 2 of 3 · 8-12 reps',
+  );
   expect(rest.remaining).toBe(45);
   // Deducting past zero ends the rest instead of moving the deadline backwards.
+  vi.mocked(cancelNativeRestAlert).mockClear();
   await act(async () => rest.add(-60));
-  expect(clearNativeRestLive).toHaveBeenCalled();
   expect(cancelNativeRestAlert).toHaveBeenCalled();
   await act(async () => vi.advanceTimersByTime(300));
   expect(mocks.toast).toHaveBeenCalledWith('Rest complete — Bench press, Set 2 of 3 · 8-12 reps.');

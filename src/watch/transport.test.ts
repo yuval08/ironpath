@@ -200,7 +200,7 @@ it('does not claim a clean finish when the paused watch action conflicts', async
   }));
   await expect(prepareWatchFinish(session.id)).rejects.toThrow('Review');
   const actions = await watchRecoveryActions(session.id);
-  expect(actions[0]!.command.changes.reps).toBe(8);
+  expect(actions[0]!.kind === 'legacy' && actions[0]!.command.changes.reps).toBe(8);
   await reviewWatchAction(actions[0]!.id);
   expect(await watchRecoveryActions(session.id)).toEqual([]);
   // Original request remains available after explicit review.
@@ -251,7 +251,7 @@ it('retains rejected pre-restore values for review without changing restored his
   native.inspectWorkout.mockResolvedValue({ inbox: [{ peer: 'watch', packet: command }] });
   await reconcileWatchInbox();
   const recovered = await watchRecoveryActions();
-  expect(recovered[0]!.command.changes.reps).toBe(17);
+  expect(recovered[0]!.kind === 'legacy' && recovered[0]!.command.changes.reps).toBe(17);
   await reviewWatchAction(recovered[0]!.id);
   await reconcileWatchInbox();
   expect(await watchRecoveryActions()).toEqual([]);

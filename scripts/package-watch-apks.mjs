@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 const signer = process.env.APKSIGNER;
 const baseline = process.argv[2];
 const phase = process.argv[3] ?? 'watch-phase1';
-if (!/^watch-phase[1-5]$/.test(phase)) throw new Error('Expected an artifact folder such as watch-phase2');
+if (!/^watch-phase[1-6]$/.test(phase)) throw new Error('Expected an artifact folder such as watch-phase2');
 if (!signer || !baseline) {
   throw new Error('Usage: APKSIGNER=/path/to/apksigner node scripts/package-watch-apks.mjs previous-phone.apk');
 }
@@ -37,9 +37,11 @@ writeFileSync(resolve(directory, 'SHA256SUMS'), hashes.join('\n') + '\n');
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0;
 writeFileSync(resolve(directory, 'build.json'), JSON.stringify({
-  revision, dirty, builtAt: new Date().toISOString(), variant: 'debug', protocolVersion: 1,
+  revision, dirty, builtAt: new Date().toISOString(), variant: 'debug',
+  ...(phase === 'watch-phase6' ? { protocolVersion: 2, protocols: [1, 2] } : { protocolVersion: 1 }),
   purpose: phase === 'watch-phase1' ? 'Phase 1 connection diagnostics; no workout controls'
     : phase === 'watch-phase2' ? 'Workout snapshot preview and sync foundation; no set controls'
+    : phase === 'watch-phase6' ? 'Shared phone/watch logging, coordinated rest timer, diagnostics'
     : phase === 'watch-phase4' ? 'Phone/watch control transfer, finish checkpoint, and rejected-action recovery'
     : 'Watch set controls, durable actions, and local rest timers',
   signingCertificateSha256: expected,

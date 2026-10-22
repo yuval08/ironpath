@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <application android:allowBackup="false" android:icon="@drawable/ic_ironpath" android:label="Ironpath" android:theme="@android:style/Theme.DeviceDefault">
+    <application android:name=".WatchApplication" android:allowBackup="false" android:icon="@drawable/ic_ironpath" android:label="Ironpath" android:theme="@android:style/Theme.DeviceDefault">
         <meta-data android:name="com.google.android.wearable.standalone" android:value="false" />
         <service android:name=".RestTimerService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
@@ -17,7 +17,7 @@
         <receiver android:name=".RestAlarmReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
         </receiver>
-        <activity android:name=".MainActivity" android:taskAffinity="com.ironpath.app" android:exported="true">
+        <activity android:name=".MainActivity" android:taskAffinity="com.ironpath.app" android:launchMode="singleTop" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -44,27 +44,45 @@ export interface RestTimer {
 
 export const REST_PRESETS = [45, 60, 75, 90];
 
-/** Countdown against a deadline, checking immediately when a suspended page resumes. */
+/** A deadline owned elsewhere (the native rest coordinator); `key` identifies the rest. */
+export interface RestSource {
+  endsAt: number | null;
+  total: number;
+  key: string | null;
+}
+
+/**
+ * Countdown against a deadline, checking immediately when a suspended page resumes.
+ * With `source`, the deadline comes from outside and start/add/stop are not used.
+ */
 export function useRestTimer(
   options: {
     vibrate?: boolean;
     sound?: boolean;
     onComplete?: () => void;
+    source?: RestSource;
   } = {},
 ): RestTimer {
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  const [endsAt, setEndsAt] = useState<number | null>(null);
-  const [total, setTotal] = useState(60);
+  const [localEndsAt, setEndsAt] = useState<number | null>(null);
+  const [localTotal, setTotal] = useState(60);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [dismissed, setDismissed] = useState<string | null>(null);
   const notified = useRef(false);
   const dismissTimeout = useRef<number | undefined>(undefined);
+  const { source } = options;
+  const sourceKey = source?.endsAt != null ? `${source.key}:${source.endsAt}` : null;
+  const endsAt = source ? (sourceKey !== dismissed ? source.endsAt : null) : localEndsAt;
+  const total = source ? source.total : localTotal;
 
   useEffect(() => {
     if (endsAt == null) {
       setRemaining(null);
       return undefined;
     }
+    // A new or moved external deadline may alert again, like start/add do locally.
+    if (source && endsAt > Date.now()) notified.current = false;
     const tick = () => {
       const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
       setRemaining(left);
@@ -79,7 +97,10 @@ export function useRestTimer(
         // Held in a ref and cleared below: starting a new rest inside this
         // 900ms window would otherwise be cancelled by the previous one's
         // orphaned dismissal — exactly when the buzz says "go again".
-        dismissTimeout.current = window.setTimeout(() => setEndsAt(null), 900);
+        dismissTimeout.current = window.setTimeout(
+          () => (sourceKey ? setDismissed(sourceKey) : setEndsAt(null)),
+          900,
+        );
       }
     };
     tick();
@@ -94,7 +115,9 @@ export function useRestTimer(
       window.removeEventListener('focus', tick);
       window.removeEventListener('pageshow', tick);
     };
-  }, [endsAt]);
+    // `source` only matters through endsAt/sourceKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endsAt, sourceKey]);
 
   const start = useCallback((seconds: number) => {
     if (!Number.isFinite(seconds) || seconds <= 0) return;

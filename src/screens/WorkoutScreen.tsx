@@ -14,13 +14,19 @@ import { EMPTY_PAIN, PainForm } from '@/components/PainScale';
 import { Sheet } from '@/components/Sheet';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  prepareWatchFinish,
-  reconcileWatchInbox,
-  watchSelection,
   allowOfflinePhoneControl,
+  beginFinish,
+  cancelFinish,
+  completeFinish,
+  legacyWatchOwns,
+  reconcileWatchInbox,
+  releaseStaleFreeze,
+  watchSelection,
+  WatchReviewRequiredError,
   WatchUnavailableError,
 } from '@/watch/transport';
 import { watchRecoveryActions } from '@/watch/recovery';
+import { useSessionEditor } from '@/state/useSessionEditor';
 import { WatchWorkoutHandoff } from '@/components/WatchWorkoutHandoff';
 import { prescriptionGroups } from '@/utils/workoutExecution';
 import { nextUp } from '@/utils/nextUp';
@@ -33,7 +39,6 @@ import {
   getPlanById,
   getSuggestions,
   recordPR,
-  saveSession,
   saveSessionElapsed,
   saveSuggestions,
 } from '@/db/repository';
@@ -64,13 +69,8 @@ export default function WorkoutScreen() {
   const { plan: activePlan, settings, sessions } = useAppData();
   const { toast } = useToast();
 
-  const [session, setSession] = useState<WorkoutSession | null>(null);
+  const [loaded, setLoaded] = useState<WorkoutSession | null>(null);
   const [sessionPlan, setSessionPlan] = useState<WorkoutPlan | undefined>();
-  const plan = session
-    ? activePlan?.id === session.planId
-      ? activePlan
-      : sessionPlan
-    : activePlan;
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [painBeforeOpen, setPainBeforeOpen] = useState(false);
@@ -82,10 +82,29 @@ export default function WorkoutScreen() {
   const stopwatch = useStopwatch(0, false);
   const { rest } = useWorkoutAlerts();
   const watch = useLiveQuery(watchSelection, [], undefined);
-  const watchLocked =
-    !!watch &&
-    watch.sessionId === session?.id &&
-    (!watch.owner || watch.owner === 'watch' || watch.owner === 'pausing');
+  // Edits are field-level patches against the live session, so watch imports and
+  // phone input merge instead of overwriting each other (sync v2 §2.3).
+  const editor = useSessionEditor(loaded?.id, {
+    initial: loaded,
+    guard: async () => {
+      if (legacyWatchOwns(await watchSelection(), loaded?.id))
+        throw new Error('Take control on the phone before editing this workout.');
+    },
+    onConflict: () =>
+      toast('This set changed on your watch. Your phone edit was kept for review below.'),
+    onError: () =>
+      toast('This change could not be saved. Review the latest workout values and retry.'),
+    // Shared mode: publish the change to the watch now rather than on the next poll.
+    onCommitted: () => void reconcileWatchInbox().catch(() => {}),
+  });
+  const session = editor.session ?? loaded;
+  const plan = session
+    ? activePlan?.id === session.planId
+      ? activePlan
+      : sessionPlan
+    : activePlan;
+  // Only a v1 handoff locks the phone; shared mode edits from both screens.
+  const watchLocked = legacyWatchOwns(watch, session?.id);
 
   /* ---------------------------------------------------------- loading */
   useEffect(() => {
@@ -95,7 +114,7 @@ export default function WorkoutScreen() {
       const found = sessionId ? await getSession(sessionId) : await findInProgressSession();
       const owner = found ? await getPlanById(found.planId) : undefined;
       if (cancelled) return;
-      setSession(found ?? null);
+      setLoaded(found ?? null);
       setSessionPlan(owner);
       if (found) {
         stopwatch.reset(found.elapsedSeconds);
@@ -111,6 +130,12 @@ export default function WorkoutScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
+  // A freeze left behind by a closed or crashed screen would keep the watch frozen.
+  const loadedId = loaded?.id;
+  useEffect(() => {
+    if (loadedId) void releaseStaleFreeze(loadedId, finishingRef.current).catch(() => {});
+  }, [loadedId]);
+
   /* ---------------------------------------------------- persist timer */
   // The live elapsed value is read through a ref so the writer below is not keyed
   // on it — an effect that re-runs every tick can never let its own timeout fire.
@@ -119,13 +144,6 @@ export default function WorkoutScreen() {
 
   const sessionId_ = session?.id;
   const sessionStatus = session?.status;
-  const liveSession = sessions.find((row) => row.id === sessionId_);
-  useEffect(() => {
-    if (liveSession && (liveSession.syncRevision ?? 0) > (sessionRef.current?.syncRevision ?? 0)) {
-      sessionRef.current = liveSession;
-      setSession(liveSession);
-    }
-  }, [liveSession]);
   const timerRunning = stopwatch.running;
 
   useEffect(() => {
@@ -150,32 +168,6 @@ export default function WorkoutScreen() {
     };
   }, [sessionId_, sessionStatus, timerRunning]);
 
-  /**
-   * `session` lives in local state and every write puts the whole document, so a
-   * second window (installed app + a browser tab) would clobber the other's sets.
-   * Re-reading whenever this tab becomes active makes the later writer start from
-   * the newer document instead of a stale one.
-   */
-  useEffect(() => {
-    if (!sessionId_) return undefined;
-    const resync = () => {
-      if (document.visibilityState !== 'visible') return;
-      void getSession(sessionId_).then((fresh) => {
-        if (!fresh) return;
-        const mine = sessionRef.current;
-        if (mine && (fresh.syncRevision ?? 0) <= (mine.syncRevision ?? 0)) return;
-        sessionRef.current = fresh;
-        setSession(fresh);
-      });
-    };
-    document.addEventListener('visibilitychange', resync);
-    window.addEventListener('focus', resync);
-    return () => {
-      document.removeEventListener('visibilitychange', resync);
-      window.removeEventListener('focus', resync);
-    };
-  }, [sessionId_]);
-
   const day: WorkoutDay | undefined = useMemo(() => {
     if (!plan || !session) return undefined;
     return plan.weeks
@@ -199,61 +191,49 @@ export default function WorkoutScreen() {
     [sessions, session],
   );
 
-  // Mirrors `session` so writers never rebuild from a stale render closure — two
-  // set-taps landing in one React batch would otherwise lose the first one.
-  const sessionRef = useRef<WorkoutSession | null>(null);
-  sessionRef.current = session;
-
-  const pendingSave = useRef<Promise<void>>(Promise.resolve());
-  const phoneSaveFailed = useRef(false);
-  const persist = useCallback(
-    (next: WorkoutSession) => {
-      if (finishingRef.current) return Promise.resolve();
-      // Advance the local revision synchronously before another input handler runs.
-      const optimistic = { ...next, syncRevision: (next.syncRevision ?? 0) + 1 };
-      sessionRef.current = optimistic;
-      setSession(optimistic);
-      const write = pendingSave.current.then(async () => {
-        try {
-          const control = await watchSelection();
-          if (
-            control?.sessionId === next.id &&
-            (!control.owner || control.owner === 'watch' || control.owner === 'pausing')
-          )
-            throw new Error('Take control on the phone before editing this workout.');
-          const saved = await saveSession(next);
-          if (!saved) throw new Error('Workout was removed or closed.');
-        } catch {
-          phoneSaveFailed.current = true;
-          const fresh = await getSession(next.id).catch(() => undefined);
-          if (fresh) {
-            sessionRef.current = fresh;
-            setSession(fresh);
-          }
-          toast('This change could not be saved. Review the latest workout values and retry.');
-        }
-      });
-      pendingSave.current = write;
-      return write;
-    },
-    [toast],
-  );
+  // A completing set's patch id identifies the rest it starts (ExerciseCard calls
+  // onRest right after onChange); un-ticking that set skips the rest again.
+  const completionOps = useRef(new Map<string, string>());
+  const pendingRestSource = useRef<string | null>(null);
+  const trackRestSource = (
+    previous: ExerciseResult | undefined,
+    next: ExerciseResult,
+    opId: string | null,
+  ) => {
+    for (const set of next.sets) {
+      const before = previous?.sets.find((row) => row.id === set.id);
+      if (!set.id || !before || before.completed === set.completed) continue;
+      if (set.completed && opId) {
+        completionOps.current.set(set.id, opId);
+        pendingRestSource.current = opId;
+        // Only a rest started in this same handler belongs to the set.
+        queueMicrotask(() => {
+          if (pendingRestSource.current === opId) pendingRestSource.current = null;
+        });
+      } else if (!set.completed) {
+        const source = completionOps.current.get(set.id);
+        completionOps.current.delete(set.id);
+        if (source && rest.remaining != null && rest.sourceOp === source) rest.stop();
+      }
+    }
+  };
 
   /** Applies a partial change against the LIVE session, never a render closure. */
   const patchSession = (patch: Partial<WorkoutSession>) => {
-    const current = sessionRef.current;
-    if (!current) return;
-    void persist({ ...current, ...patch, elapsedSeconds: elapsedRef.current });
+    const current = editor.current();
+    if (!current || finishingRef.current) return;
+    editor.change({ ...current, ...patch, elapsedSeconds: elapsedRef.current });
   };
 
   const updateResult = (next: ExerciseResult) => {
-    const current = sessionRef.current;
-    if (!current) return;
+    const current = editor.current();
+    if (!current || finishingRef.current) return;
     const previous = current.results.find((r) => r.prescriptionId === next.prescriptionId);
     const results = current.results.map((r) =>
       r.prescriptionId === next.prescriptionId ? next : r,
     );
-    void persist({ ...current, results, elapsedSeconds: elapsedRef.current });
+    const opId = editor.change({ ...current, results, elapsedSeconds: elapsedRef.current });
+    trackRestSource(previous, next, opId);
 
     // Only collapse on the false -> true transition. Notes, pain, form and
     // substitution all arrive through this same handler, so re-running it on
@@ -289,7 +269,7 @@ export default function WorkoutScreen() {
   };
 
   const finish = async () => {
-    const current = sessionRef.current;
+    const current = editor.current() ?? loaded;
     // Finishing takes several async round-trips; without this guard a second tap
     // re-enters and advances the plan cursor twice, dropping a training day.
     if (!current || finishingRef.current) return;
@@ -298,15 +278,14 @@ export default function WorkoutScreen() {
     let finished: WorkoutSession;
     let checkingWatch = true;
     try {
-      await pendingSave.current;
-      if (phoneSaveFailed.current) {
-        phoneSaveFailed.current = false;
+      if (await editor.flush())
         throw new Error(
           'Some phone edits could not be saved. Review the latest values before finishing.',
         );
-      }
+      // Shared mode freezes both screens and imports through the watch checkpoint;
+      // a legacy handoff takes control with the v1 pause.
       try {
-        await prepareWatchFinish(current.id);
+        await beginFinish(current.id);
       } catch (error) {
         if (
           !(error instanceof WatchUnavailableError) ||
@@ -315,9 +294,10 @@ export default function WorkoutScreen() {
           )
         )
           throw error;
+        // The queued freeze and closure stay in the outbox for the watch.
         await allowOfflinePhoneControl(current.id);
         if ((await watchRecoveryActions(current.id)).length)
-          throw new Error('Review the saved watch actions before finishing.');
+          throw new WatchReviewRequiredError('Review the saved watch actions before finishing.');
       }
       const latest = await getSession(current.id);
       if (!latest || latest.status !== 'inProgress')
@@ -331,9 +311,12 @@ export default function WorkoutScreen() {
       };
       checkingWatch = false;
       finished = await completeSession(finished);
+      await completeFinish(current.id).catch(() => {});
       rest.stop();
       void reconcileWatchInbox().catch(() => {});
     } catch (error) {
+      // Cancelled or failed finishing restores normal shared editing.
+      void cancelFinish(current.id, '').catch(() => {});
       finishingRef.current = false;
       setFinishing(false);
       toast(
@@ -415,17 +398,21 @@ export default function WorkoutScreen() {
   });
   const nextExercise = session.results.find((r) => !r.completed && !r.skippedReason);
   /** Reads the live session, so the set just logged already counts as done. */
-  const upcoming = () =>
-    sessionRef.current
-      ? nextUp(
-          day,
-          sessionRef.current,
-          (exerciseId) => previousResult(priorSessions, exerciseId),
-          settings.weightUnit,
-          settings.bandLabels,
-        )
-      : null;
-  const startRest = (seconds: number) => rest.start(seconds, upcoming());
+  const upcoming = () => {
+    const current = editor.current() ?? session;
+    return nextUp(
+      day,
+      current,
+      (exerciseId) => previousResult(priorSessions, exerciseId),
+      settings.weightUnit,
+      settings.bandLabels,
+    );
+  };
+  const startRest = (seconds: number) => {
+    const sourceOp = pendingRestSource.current ?? undefined;
+    pendingRestSource.current = null;
+    rest.start(seconds, upcoming(), { sessionId: session.id, sourceOp });
+  };
   const restNext = rest.remaining != null ? upcoming() : null;
   // Deliberately partial: the user renames only the bands they own, and every
   // consumer resolves a missing key through `bandName`'s default.
@@ -621,6 +608,15 @@ export default function WorkoutScreen() {
         <div className="rest-overlay">
           <span className="muted">Rest</span>
           <div className="count">{rest.remaining}</div>
+          {rest.destination && rest.destination !== 'phone' && (
+            <span className="muted tiny">
+              {rest.destination === 'watch'
+                ? 'Alert on your watch'
+                : rest.destination === 'both'
+                  ? 'Alert on watch and phone'
+                  : 'No alert'}
+            </span>
+          )}
           {restNext && (
             <div className="rest-next">
               <span className="muted tiny">

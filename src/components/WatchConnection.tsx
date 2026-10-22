@@ -1,15 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
 import { WatchLink, watchLinkSupported } from '@/utils/watchLink';
+import type { WatchCompat } from '@/utils/watchLink';
 
-/** Phase-one diagnostics; no workout data or control ownership changes. */
+const REASONS: Record<WatchCompat['reason'], string> = {
+  ok: 'Logging from both screens is available.',
+  noWatch: 'No watch with Ironpath is connected.',
+  multipleWatches: 'More than one watch has Ironpath installed. Keep it on one watch.',
+  watchUpdateRequired: 'Update the watch app to 0.5.0 to log from both screens.',
+  helloPending: 'Waiting for the watch app to report its version.',
+};
+
+/** Compatibility line: versions, protocols and whether shared logging is on. */
+export function compatSummary(compat: WatchCompat): string {
+  const phone = `Phone protocols ${compat.phoneProtocols.join(', ')}`;
+  const peer = compat.peer
+    ? `${compat.peer.name}${compat.peer.versionName ? ` ${compat.peer.versionName}` : ''}${
+        compat.peer.protocols ? ` (protocols ${compat.peer.protocols.join(', ')})` : ''
+      }${compat.peer.reachable ? '' : ', not reachable'}`
+    : 'no watch';
+  return `${phone} · ${peer}. ${REASONS[compat.reason]}`;
+}
+
+/** Connection test and compatibility; no workout data or control ownership changes. */
 export function WatchConnection() {
   const [status, setStatus] = useState(
     'Install Ironpath on your paired watch to test the connection.',
   );
   const [busy, setBusy] = useState(false);
+  const [compat, setCompat] = useState<WatchCompat | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
+    // Older native builds have no compat bridge; they simply show no summary.
+    if (watchLinkSupported())
+      void Promise.resolve()
+        .then(() => WatchLink.compat())
+        .then((value) => {
+          if (mounted.current) setCompat(value);
+        })
+        .catch(() => {});
     return () => {
       mounted.current = false;
     };
@@ -50,7 +79,7 @@ export function WatchConnection() {
       <button className="btn" disabled={busy} onClick={() => void test()}>
         {busy ? 'Testing…' : 'Test watch connection'}
       </button>
-      <p className="muted tiny">Workout controls are coming next.</p>
+      {compat && <p className="muted tiny">{compatSummary(compat)}</p>}
     </section>
   );
 }

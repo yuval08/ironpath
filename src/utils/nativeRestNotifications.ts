@@ -1,4 +1,4 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 const REST_ID = 71001;
@@ -6,34 +6,9 @@ const TEST_ID = 71002;
 const CHANNEL_ID = 'ironpath-rest';
 let queue: Promise<unknown> = Promise.resolve();
 const DEFAULT_BODY = 'Ready for your next set? Tap to return to your workout.';
-
-/** Native ongoing notification with a system countdown (see RestLivePlugin.java). */
-const RestLive = registerPlugin<{
-  show(options: { endsAt: number; title: string; text: string }): Promise<void>;
-  clear(): Promise<void>;
-}>('RestLive');
-
-function restLiveSupported(): boolean {
-  return Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('RestLive');
-}
-
-/** Lock-screen countdown; Android removes it at the deadline by itself. */
-export function showNativeRestLive(
-  deadline: number,
-  next: { title: string; text: string } | null,
-): Promise<void> {
-  if (!restLiveSupported()) return Promise.resolve();
-  return RestLive.show({
-    endsAt: deadline,
-    title: next?.title ?? 'Resting',
-    text: next?.text ?? 'Tap to return to your workout.',
-  }).catch(() => {});
-}
-
-export function clearNativeRestLive(): Promise<void> {
-  if (!restLiveSupported()) return Promise.resolve();
-  return RestLive.clear().catch(() => {});
-}
+// On Android with the RestCoordinator plugin the rest alert and lock-screen countdown
+// are native (PhoneRestAlerts); this LocalNotifications path serves other platforms
+// and the test alert.
 
 export function nativeRestNotificationsSupported(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LocalNotifications');

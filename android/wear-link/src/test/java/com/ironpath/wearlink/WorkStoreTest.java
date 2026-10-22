@@ -195,7 +195,7 @@ public class WorkStoreTest {
     }
     @Test public void staleTimerCallbacksCannotDismissExtendedSkippedOrNewRests() throws Exception {
         log(); JSONObject old = watch.rest();
-        watch.editRest(true, 2000);
+        watch.editRest(15, 2000);
         assertNull(watch.claimRest(old.getString("id"), old.getLong("revision"), 62000));
         JSONObject extended = watch.rest();
         assertNotNull(watch.claimRest(extended.getString("id"), extended.getLong("revision"), 76000));

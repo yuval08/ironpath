@@ -3,35 +3,40 @@ package com.ironpath.wearlink;
 import java.util.UUID;
 import org.json.JSONObject;
 
-/** Clock math is independent of Android lifecycle and never counts timer ticks. */
+/**
+ * v1 local timers (legacy mode and the watch test alert). Arithmetic is RestRules'; this wrapper keeps the
+ * v1 record keys ({@code source}, {@code duration}, {@code revision == localRev}).
+ */
 public final class RestState {
     public static JSONObject start(String command, String session, int seconds, long elapsed, long wall, int boot, boolean vibrate) throws Exception {
         if (seconds <= 0 || seconds > 86400) throw new IllegalArgumentException("Invalid rest duration");
-        return new JSONObject().put("id", UUID.randomUUID().toString()).put("revision", 1)
-            .put("source", command).put("sessionId", session).put("duration", seconds * 1000L)
-            .put("endsElapsed", elapsed + seconds * 1000L).put("endsWall", wall + seconds * 1000L)
-            .put("boot", boot).put("active", true).put("vibrate", vibrate);
+        JSONObject timer = RestRules.create(UUID.randomUUID().toString(), session, null, "watch", null, command,
+            seconds * 1000L, elapsed, new Clock(elapsed, wall, boot), null, vibrate);
+        return v1(timer.put("source", command).put("duration", seconds * 1000L).put("test", "test".equals(command)));
     }
     public static long remaining(JSONObject timer, long elapsed) throws Exception {
-        return timer != null && timer.optBoolean("active") ? Math.max(0, timer.getLong("endsElapsed") - elapsed) : 0;
+        return RestRules.remaining(timer, elapsed);
     }
     public static JSONObject stop(JSONObject timer) throws Exception {
-        return new JSONObject(timer.toString()).put("active", false).put("revision", timer.getLong("revision") + 1);
+        return v1(RestRules.end(timer, "ended"));
     }
     public static JSONObject extend(JSONObject timer, long elapsed) throws Exception {
-        if (timer == null || !timer.optBoolean("active") || remaining(timer, elapsed) == 0)
-            throw new IllegalStateException("Rest has already ended");
-        if (timer.getLong("duration") + 15000 > 86400000) throw new IllegalStateException("Rest is too long");
-        return new JSONObject(timer.toString()).put("revision", timer.getLong("revision") + 1)
-            .put("duration", timer.getLong("duration") + 15000)
-            .put("endsElapsed", timer.getLong("endsElapsed") + 15000).put("endsWall", timer.getLong("endsWall") + 15000);
+        return adjust(timer, 15000, elapsed);
+    }
+    /** ± adjustment; throws when the rest already ended (never restarts an expired rest). */
+    public static JSONObject adjust(JSONObject timer, long deltaMs, long elapsed) throws Exception {
+        if (timer == null || RestRules.remaining(timer, elapsed) == 0) throw new SyncError("noRest", "Rest has already ended");
+        if (RestRules.duration(timer) + deltaMs > RestRules.MAX_MS) throw new SyncError("invalid", "Rest is too long");
+        long wallOffset = timer.getLong("endsWall") - timer.getLong("endsElapsed");
+        RestRules.Result result = RestRules.adjust(timer, timer.getString("id"), deltaMs, new Clock(elapsed, elapsed + wallOffset, timer.optInt("boot")));
+        return v1(result.current);
     }
     public static JSONObject recover(JSONObject timer, long elapsed, long wall, int boot) throws Exception {
-        if (timer == null || !timer.optBoolean("active") || timer.getInt("boot") == boot) return timer;
-        long left = timer.getLong("endsWall") - wall;
-        JSONObject next = new JSONObject(timer.toString()).put("boot", boot).put("revision", timer.getLong("revision") + 1);
-        if (left <= 0 || left > timer.getLong("duration"))
-            return next.put("active", false).put("recovery", "Rest ended while the watch restarted or its clock changed.");
-        return next.put("endsElapsed", elapsed + left);
+        JSONObject next = RestRules.recover(timer, new Clock(elapsed, wall, boot));
+        return next == timer || next == null ? next : v1(next);
+    }
+    /** v1 readers key alarms by {@code revision}. */
+    private static JSONObject v1(JSONObject timer) throws Exception {
+        return timer.put("revision", timer.getLong("localRev"));
     }
 }

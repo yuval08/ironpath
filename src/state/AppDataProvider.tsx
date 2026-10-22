@@ -5,6 +5,8 @@ import { db, requestPersistentStorage } from '@/db/db';
 import { ensureSeeded, syncPlansWithPrograms } from '@/db/repository';
 import { migrateAll } from '@/db/migrations';
 import { reconcileWatchInbox } from '@/watch/transport';
+import { WatchLink, watchLinkSupported } from '@/utils/watchLink';
+import { recordJsDiagnostic } from '@/watch/diagnostics';
 import type {
   FinalAssessment,
   ImportedWeight,
@@ -83,14 +85,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     if (!seeded) return;
     const reconcile = () => {
       if (document.visibilityState === 'visible')
-        void reconcileWatchInbox().catch((error: unknown) =>
-          console.error('[watch] could not reconcile pending commands', error),
-        );
+        void reconcileWatchInbox().catch((error: unknown) => {
+          console.error('[watch] could not reconcile pending commands', error);
+          void recordJsDiagnostic('js.error', {
+            data: { stage: 'reconcile', message: String(error).slice(0, 300) },
+          });
+        });
     };
+    // Native inbox, ACK or watch status changes import at once; the poll is a fallback.
+    const changed = watchLinkSupported()
+      ? WatchLink.addListener('workChanged', reconcile).catch(() => null)
+      : null;
     const interval = window.setInterval(reconcile, 2000);
     document.addEventListener('visibilitychange', reconcile);
     window.addEventListener('focus', reconcile);
     return () => {
+      void changed?.then((handle) => handle?.remove()).catch(() => {});
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', reconcile);
       window.removeEventListener('focus', reconcile);

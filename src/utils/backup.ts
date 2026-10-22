@@ -4,6 +4,7 @@ import { isFutureSchema, migrateAll } from '@/db/migrations';
 import { SCHEMA_VERSION, backupFileSchema } from '@/types';
 import type { BackupFile, UserSettings, WorkoutPlan } from '@/types';
 import { triggerDownload } from './excelExport';
+import { closeCoordinatedRest } from '@/watch/restCoordinator';
 
 export async function buildBackup(): Promise<BackupFile> {
   const [plans, sessions, personalRecords, settings, suggestions, assessments, importedWeights] =
@@ -161,6 +162,8 @@ export async function restoreBackup(json: unknown): Promise<RestoreResult> {
       await db.meta.delete('watch:selected');
     },
   );
+  // The restored timeline has no running rest; null closes any session's timer.
+  await closeCoordinatedRest(null, 'restored');
 
   return {
     plans: data.plans.length,

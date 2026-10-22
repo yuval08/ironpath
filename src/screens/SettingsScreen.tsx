@@ -8,6 +8,7 @@ import { ConfirmButton, Sheet } from '@/components/Sheet';
 import { WorkoutPreferences } from '@/components/WorkoutPreferences';
 import { WatchRecovery } from '@/components/WatchRecovery';
 import { WatchConnection } from '@/components/WatchConnection';
+import { WatchDiagnostics } from '@/components/WatchDiagnostics';
 import { EXERCISES } from '@/data/exercises';
 import { getVideo } from '@/data/exerciseVideos';
 import { REST_PRESETS } from '@/hooks/useTimers';
@@ -193,6 +194,7 @@ export default function SettingsScreen() {
         <WorkoutPreferences />
         <WatchConnection />
         <WatchRecovery />
+        <WatchDiagnostics />
         <div className="switch">
           <span>Beep when rest ends</span>
           <input
