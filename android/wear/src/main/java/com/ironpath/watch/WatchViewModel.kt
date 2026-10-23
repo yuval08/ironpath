@@ -77,7 +77,12 @@ class WatchViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(notificationsOn = NotificationManagerCompat.from(context).areNotificationsEnabled(),
                     preciseOn = RestRuntime.precise(context)) }
                 if (first && snapshot.runningRest != null) startRuntime()
-                withContext(Dispatchers.IO) { flushQuietly() }
+                withContext(Dispatchers.IO) {
+                    // Announce this version on launch, so the phone's background listener can answer
+                    // even when the phone app is closed.
+                    if (first) WorkClient.helloIfStale(context)
+                    flushQuietly()
+                }
                 first = false
             } catch (error: Exception) {
                 if (error is CancellationException) throw error

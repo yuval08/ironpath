@@ -72,7 +72,7 @@ public final class WorkClient {
         }
         send(context, peer, hello);
     }
-    /** Phone: hello again if the last one is older than a minute (called from flushWorkout). */
+    /** Hello again if the last one is older than a minute (phone flushWorkout, watch app launch). */
     public static void helloIfStale(Context context) {
         try {
             String sent;
